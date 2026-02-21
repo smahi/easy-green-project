@@ -15,8 +15,11 @@ class BaladyasTable
     {
         return $table
             ->columns([
-                TextColumn::make('wilaya_id')
-                    ->numeric()
+                TextColumn::make('wilaya.name')
+                    ->label('Wilaya')
+                    ->sortable(),
+                TextColumn::make('name')
+                    ->searchable()
                     ->sortable(),
                 TextColumn::make('code')
                     ->searchable(),

@@ -2,9 +2,11 @@
 
 namespace App\Filament\Resources\Baladyas\Schemas;
 
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 
 class BaladyaForm
@@ -13,15 +15,41 @@ class BaladyaForm
     {
         return $schema
             ->components([
-                TextInput::make('wilaya_id')
-                    ->required()
-                    ->numeric(),
-                TextInput::make('code'),
-                Textarea::make('name')
-                    ->required()
-                    ->columnSpanFull(),
-                Toggle::make('is_active')
-                    ->required(),
+                Section::make('Location Details')
+                    ->schema([
+                        Select::make('wilaya_id')
+                            ->relationship('wilaya', 'name')
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->label('Wilaya'),
+                            
+                        TextInput::make('code')
+                            ->label('Postal/Admin Code'),
+                    ]),
+
+                Section::make('Translations')
+                    ->schema([
+                        Grid::make(3)
+                            ->schema([
+                                TextInput::make('name.en')
+                                    ->label('Name (English)')
+                                    ->required(),
+                                TextInput::make('name.ar')
+                                    ->label('Name (Arabic)')
+                                    ->required(),
+                                TextInput::make('name.fr')
+                                    ->label('Name (French)')
+                                    ->required(),
+                            ]),
+                    ]),
+
+                Section::make('Settings')
+                    ->schema([
+                        Toggle::make('is_active')
+                            ->default(true)
+                            ->required(),
+                    ]),
             ]);
     }
 }
