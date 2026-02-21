@@ -16,7 +16,11 @@ class WilayasTable
         return $table
             ->columns([
                 TextColumn::make('code')
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
+                TextColumn::make('name')
+                    ->searchable()
+                    ->sortable(),
                 IconColumn::make('is_active')
                     ->boolean(),
                 TextColumn::make('created_at')
