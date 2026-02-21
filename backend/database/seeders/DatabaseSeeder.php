@@ -13,7 +13,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->call(RolesSeeder::class);
+        $this->call([
+            RolesSeeder::class,
+            WilayasSeeder::class,
+        ]);
 
         // Ensure a superuser exists (if not created by command)
         $superUserRole = config('filament-shield.super_admin.name', 'superuser');
