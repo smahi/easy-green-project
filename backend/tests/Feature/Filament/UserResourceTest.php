@@ -50,6 +50,15 @@ it('can render user resource edit page', function () {
         ->assertSuccessful();
 });
 
+it('cannot edit another superuser', function () {
+    $otherSuperuser = User::factory()->create();
+    $otherSuperuser->assignRole($this->role);
+
+    $this->actingAs($this->user)
+        ->get(UserResource::getUrl('edit', ['record' => $otherSuperuser]))
+        ->assertForbidden();
+});
+
 it('can list users', function () {
     $user = User::factory()->create();
 
