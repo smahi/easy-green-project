@@ -3,20 +3,20 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use BezhanSalleh\FilamentShield\Traits\HasPanelShield;
 use Filament\Models\Contracts\FilamentUser;
-use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
-use BezhanSalleh\FilamentShield\Traits\HasPanelShield;
 
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, TwoFactorAuthenticatable, HasRoles, HasPanelShield;
+    use HasApiTokens, HasFactory, HasPanelShield, HasRoles, Notifiable, TwoFactorAuthenticatable;
 
     /**
      * The attributes that are mass assignable.
