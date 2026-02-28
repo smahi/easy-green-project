@@ -8,10 +8,10 @@ use Spatie\Permission\PermissionRegistrar;
 
 test('superuser can create a report type', function () {
     $this->browse(function (Browser $browser) {
-        $superuser = User::factory()->create([
-            'email' => 'superuser_dusk@example.com',
-            'password' => bcrypt('password'),
-        ]);
+        $superuser = User::firstOrCreate(
+            ['email' => 'superuser_dusk@example.com'],
+            ['password' => bcrypt('password'), 'name' => 'Super User']
+        );
         
         $role = Role::firstOrCreate(['name' => 'superuser', 'guard_name' => 'web']);
         
@@ -36,6 +36,7 @@ test('superuser can create a report type', function () {
             ->type('data[name][en]', 'Locust')
             ->type('data[name][ar]', 'جراد')
             ->type('data[name][fr]', 'Criquet')
+            ->type('data[color]', '#ff0000')
             ->select('data[severity_level]', '5')
             ->press('Create')
             ->waitForText('created') // Wait for notification

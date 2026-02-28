@@ -16,7 +16,7 @@ class BaladyasTable
         return $table
             ->columns([
                 TextColumn::make('wilaya.name')
-                    ->label('Wilaya')
+                    ->label(__('Wilaya'))
                     ->sortable(),
                 TextColumn::make('name')
                     ->searchable()
@@ -44,6 +44,7 @@ class BaladyasTable
                 BulkActionGroup::make([
                     DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 }

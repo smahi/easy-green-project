@@ -11,6 +11,7 @@ import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/create_report_screen.dart';
 
 void main() {
   runApp(
@@ -74,6 +75,10 @@ class EasyGreenApp extends StatelessWidget {
             GoRoute(
               path: 'settings',
               builder: (context, state) => const SettingsScreen(),
+            ),
+            GoRoute(
+              path: 'create-report',
+              builder: (context, state) => const CreateReportScreen(),
             ),
           ],
         ),

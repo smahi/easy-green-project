@@ -38,7 +38,13 @@ it('can render report type resource list page', function () {
 it('can render report type resource create page', function () {
     $this->actingAs($this->user)
         ->get(ReportTypeResource::getUrl('create'))
-        ->assertSuccessful();
+        ->assertSuccessful()
+        ->assertSee('Basic Information')
+        ->assertSee('Name (English)')
+        ->assertSee('Name (Arabic)')
+        ->assertSee('Name (French)')
+        ->assertSee('Settings')
+        ->assertSee('Severity level');
 });
 
 it('can create a report type', function () {

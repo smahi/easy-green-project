@@ -55,6 +55,9 @@ class ReportForm
                             ])
                             ->required()
                             ->default('new'),
+                        Textarea::make('inspector_feedback')
+                            ->columnSpanFull()
+                            ->label(__('Inspector Feedback')),
                         Toggle::make('is_synchronized')
                             ->required()
                             ->disabled(),

@@ -4,7 +4,6 @@ namespace App\Filament\Resources\ReportTypes\Schemas;
 
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -18,32 +17,32 @@ class ReportTypeForm
     {
         return $schema
             ->components([
-                Section::make('Basic Information')
+                Section::make(__('Basic Information'))
                     ->schema([
                         Grid::make(3)
                             ->schema([
                                 TextInput::make('name.en')
-                                    ->label('Name (English)')
+                                    ->label(__('Name (English)'))
                                     ->required(),
                                 TextInput::make('name.ar')
-                                    ->label('Name (Arabic)')
+                                    ->label(__('Name (Arabic)'))
                                     ->required(),
                                 TextInput::make('name.fr')
-                                    ->label('Name (French)')
+                                    ->label(__('Name (French)'))
                                     ->required(),
                             ]),
                         Grid::make(3)
                             ->schema([
                                 TextInput::make('description.en')
-                                    ->label('Description (English)'),
+                                    ->label(__('Description (English)')),
                                 TextInput::make('description.ar')
-                                    ->label('Description (Arabic)'),
+                                    ->label(__('Description (Arabic)')),
                                 TextInput::make('description.fr')
-                                    ->label('Description (French)'),
+                                    ->label(__('Description (French)')),
                             ]),
                     ]),
                 
-                Section::make('Settings')
+                Section::make(__('Settings'))
                     ->columns(2)
                     ->schema([
                         FileUpload::make('icon')
@@ -55,11 +54,11 @@ class ReportTypeForm
                             
                         Select::make('severity_level')
                             ->options([
-                                1 => 'Low',
-                                2 => 'Medium',
-                                3 => 'High',
-                                4 => 'Critical',
-                                5 => 'Emergency',
+                                1 => __('Low'),
+                                2 => __('Medium'),
+                                3 => __('High'),
+                                4 => __('Critical'),
+                                5 => __('Emergency'),
                             ])
                             ->required()
                             ->default(1),

@@ -49,4 +49,31 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get logout => 'تسجيل الخروج';
+
+  @override
+  String get description => 'الوصف';
+
+  @override
+  String get report_type => 'نوع التقرير';
+
+  @override
+  String get location => 'الموقع';
+
+  @override
+  String get submit_report => 'إرسال التقرير';
+
+  @override
+  String get cancel => 'إلغاء';
+
+  @override
+  String get required => 'مطلوب';
+
+  @override
+  String get success => 'تم بنجاح';
+
+  @override
+  String get error => 'خطأ';
+
+  @override
+  String get fetching_location => 'جاري جلب الموقع...';
 }

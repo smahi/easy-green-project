@@ -20,6 +20,16 @@ class BaladyaResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
+    public static function getModelLabel(): string
+    {
+        return __('Baladya');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('Baladyas');
+    }
+
     public static function form(Schema $schema): Schema
     {
         return BaladyaForm::configure($schema);

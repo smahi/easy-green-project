@@ -15,5 +15,14 @@
   "light_mode": "Light Mode",
   "reports": "Reports",
   "create_report": "New Report",
-  "logout": "Logout"
+  "logout": "Logout",
+  "description": "Description",
+  "report_type": "Report Type",
+  "location": "Location",
+  "submit_report": "Submit Report",
+  "cancel": "Cancel",
+  "required": "Required",
+  "success": "Success",
+  "error": "Error",
+  "fetching_location": "Fetching location..."
 }

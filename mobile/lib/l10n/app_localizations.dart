@@ -181,6 +181,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Logout'**
   String get logout;
+
+  /// No description provided for @description.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get description;
+
+  /// No description provided for @report_type.
+  ///
+  /// In en, this message translates to:
+  /// **'Report Type'**
+  String get report_type;
+
+  /// No description provided for @location.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get location;
+
+  /// No description provided for @submit_report.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit Report'**
+  String get submit_report;
+
+  /// No description provided for @cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
+
+  /// No description provided for @required.
+  ///
+  /// In en, this message translates to:
+  /// **'Required'**
+  String get required;
+
+  /// No description provided for @success.
+  ///
+  /// In en, this message translates to:
+  /// **'Success'**
+  String get success;
+
+  /// No description provided for @error.
+  ///
+  /// In en, this message translates to:
+  /// **'Error'**
+  String get error;
+
+  /// No description provided for @fetching_location.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetching location...'**
+  String get fetching_location;
 }
 
 class _AppLocalizationsDelegate

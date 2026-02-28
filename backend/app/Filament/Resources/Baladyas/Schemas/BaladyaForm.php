@@ -15,36 +15,36 @@ class BaladyaForm
     {
         return $schema
             ->components([
-                Section::make('Location Details')
+                Section::make(__('Location Details'))
                     ->schema([
                         Select::make('wilaya_id')
                             ->relationship('wilaya', 'name')
                             ->searchable()
                             ->preload()
                             ->required()
-                            ->label('Wilaya'),
+                            ->label(__('Wilaya')),
                             
                         TextInput::make('code')
-                            ->label('Postal/Admin Code'),
+                            ->label(__('Postal/Admin Code')),
                     ]),
 
-                Section::make('Translations')
+                Section::make(__('Translations'))
                     ->schema([
                         Grid::make(3)
                             ->schema([
                                 TextInput::make('name.en')
-                                    ->label('Name (English)')
+                                    ->label(__('Name (English)'))
                                     ->required(),
                                 TextInput::make('name.ar')
-                                    ->label('Name (Arabic)')
+                                    ->label(__('Name (Arabic)'))
                                     ->required(),
                                 TextInput::make('name.fr')
-                                    ->label('Name (French)')
+                                    ->label(__('Name (French)'))
                                     ->required(),
                             ]),
                     ]),
 
-                Section::make('Settings')
+                Section::make(__('Settings'))
                     ->schema([
                         Toggle::make('is_active')
                             ->default(true)

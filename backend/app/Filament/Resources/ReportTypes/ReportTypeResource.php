@@ -18,7 +18,19 @@ class ReportTypeResource extends Resource
 {
     protected static ?string $model = ReportType::class;
 
+    protected static ?string $slug = 'report-types';
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    public static function getModelLabel(): string
+    {
+        return __('Report type');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('Report types');
+    }
 
     public static function form(Schema $schema): Schema
     {

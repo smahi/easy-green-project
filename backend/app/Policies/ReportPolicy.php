@@ -24,7 +24,7 @@ class ReportPolicy
 
     public function create(AuthUser $authUser): bool
     {
-        return false;
+        return $authUser->can('Create:Report');
     }
 
     public function update(AuthUser $authUser, Report $report): bool

@@ -49,4 +49,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get logout => 'Logout';
+
+  @override
+  String get description => 'Description';
+
+  @override
+  String get report_type => 'Report Type';
+
+  @override
+  String get location => 'Location';
+
+  @override
+  String get submit_report => 'Submit Report';
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get required => 'Required';
+
+  @override
+  String get success => 'Success';
+
+  @override
+  String get error => 'Error';
+
+  @override
+  String get fetching_location => 'Fetching location...';
 }

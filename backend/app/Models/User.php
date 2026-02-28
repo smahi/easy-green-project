@@ -65,4 +65,12 @@ class User extends Authenticatable implements FilamentUser
             ->map(fn ($word) => Str::substr($word, 0, 1))
             ->implode('');
     }
+
+    /**
+     * Get the user's reports
+     */
+    public function reports()
+    {
+        return $this->hasMany(Report::class);
+    }
 }

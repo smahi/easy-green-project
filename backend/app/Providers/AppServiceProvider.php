@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use BezhanSalleh\LanguageSwitch\LanguageSwitch;
 use Carbon\CarbonImmutable;
+use Filament\Forms\Components\Field;
+use Filament\Tables\Columns\Column;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -23,7 +26,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Field::configureUsing(function (Field $field): void {
+            $field->translateLabel();
+        });
+
+        Column::configureUsing(function (Column $column): void {
+            $column->translateLabel();
+        });
+
         $this->configureDefaults();
+
+        LanguageSwitch::configureUsing(function (LanguageSwitch $switch) {
+            $switch
+                ->locales(['ar', 'en', 'fr']);
+        });
     }
 
     /**
@@ -48,3 +64,5 @@ class AppServiceProvider extends ServiceProvider
         );
     }
 }
+
+

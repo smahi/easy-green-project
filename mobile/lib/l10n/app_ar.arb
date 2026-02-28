@@ -12,5 +12,14 @@
   "light_mode": "الوضع الفاتح",
   "reports": "التقارير",
   "create_report": "تقرير جديد",
-  "logout": "تسجيل الخروج"
+  "logout": "تسجيل الخروج",
+  "description": "الوصف",
+  "report_type": "نوع التقرير",
+  "location": "الموقع",
+  "submit_report": "إرسال التقرير",
+  "cancel": "إلغاء",
+  "required": "مطلوب",
+  "success": "تم بنجاح",
+  "error": "خطأ",
+  "fetching_location": "جاري جلب الموقع..."
 }

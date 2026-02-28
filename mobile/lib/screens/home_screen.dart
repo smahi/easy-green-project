@@ -38,7 +38,7 @@ class HomeScreen extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          // Navigate to create report
+          context.go('/create-report');
         },
         icon: const Icon(Icons.add),
         label: Text(l10n.create_report),

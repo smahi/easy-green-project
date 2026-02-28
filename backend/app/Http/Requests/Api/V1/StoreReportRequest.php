@@ -22,6 +22,7 @@ class StoreReportRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'client_uuid' => ['nullable', 'string', 'max:36'],
             'report_type_id' => ['required', 'integer', 'exists:report_types,id'],
             'description' => ['nullable', 'string', 'max:1000'],
             'latitude' => ['required', 'numeric', 'between:-90,90'],
