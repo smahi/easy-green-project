@@ -22,7 +22,7 @@ class ReportController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $reports = $request->user()->reports()->with('reportType')->latest()->paginate(15);
-        
+
         return ReportResource::collection($reports);
     }
 
@@ -31,9 +31,14 @@ class ReportController extends Controller
      */
     public function store(StoreReportRequest $request): JsonResponse
     {
-        $this->authorize('create', Report::class);
-        
-        $validated = $request->validated();
+        try {
+            $this->authorize('create', Report::class);
+
+            $validated = $request->validated();
+        } catch (\Exception $e) {
+            \Log::error('Report Submission Error: '.$e->getMessage());
+            throw $e;
+        }
 
         $mediaPaths = [];
         if ($request->hasFile('media_attachments')) {
@@ -89,7 +94,7 @@ class ReportController extends Controller
         $validated = $request->validated();
         $userId = $request->user()->id;
         $locale = app()->getLocale();
-        
+
         $insertedReports = [];
 
         foreach ($validated['reports'] as $reportData) {
@@ -117,7 +122,7 @@ class ReportController extends Controller
             } else {
                 $report = Report::create(array_merge(['user_id' => $userId], $data));
             }
-            
+
             $insertedReports[] = $report;
         }
 

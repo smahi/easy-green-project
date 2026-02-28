@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:easy_green/l10n/app_localizations.dart';
@@ -6,7 +7,15 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
+import 'package:permission_handler/permission_handler.dart';
+
 import '../providers/auth_provider.dart';
+import '../providers/report_provider.dart';
+import '../models/report.dart';
 import '../services/api_service.dart';
 
 class CreateReportScreen extends StatefulWidget {
@@ -27,11 +36,27 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   String? _typesError;
   List<Map<String, dynamic>> _reportTypes = [];
 
+  // Media related
+  final ImagePicker _picker = ImagePicker();
+  final List<File> _mediaFiles = [];
+  
+  // Audio recording
+  late AudioRecorder _audioRecorder;
+  bool _isRecording = false;
+  String? _audioPath;
+
   @override
   void initState() {
     super.initState();
+    _audioRecorder = AudioRecorder();
     _fetchReportTypes();
     _determinePosition();
+  }
+
+  @override
+  void dispose() {
+    _audioRecorder.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchReportTypes() async {
@@ -105,7 +130,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
         return;
       }
 
-      // Add a timeout to prevent hanging forever
       final position = await Geolocator.getCurrentPosition(
         timeLimit: const Duration(seconds: 10),
       );
@@ -122,6 +146,48 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
   }
 
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? image = await _picker.pickImage(source: source);
+    if (image != null) {
+      setState(() {
+        _mediaFiles.add(File(image.path));
+      });
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    final XFile? video = await _picker.pickVideo(source: ImageSource.camera);
+    if (video != null) {
+      setState(() {
+        _mediaFiles.add(File(video.path));
+      });
+    }
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      final path = await _audioRecorder.stop();
+      setState(() {
+        _isRecording = false;
+        if (path != null) {
+          _mediaFiles.add(File(path));
+        }
+      });
+    } else {
+      if (await _audioRecorder.hasPermission()) {
+        final directory = await getApplicationDocumentsDirectory();
+        final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        final filePath = path.join(directory.path, fileName);
+        
+        const config = RecordConfig();
+        await _audioRecorder.start(config, path: filePath);
+        setState(() {
+          _isRecording = true;
+        });
+      }
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _currentPosition == null || _selectedReportTypeId == null) {
       return;
@@ -133,34 +199,68 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     final clientUuid = const Uuid().v4();
 
     try {
-      final response = await http.post(
-        Uri.parse('${ApiService.apiBaseUrl}/reports'),
-        headers: {
+      final uri = Uri.parse('${ApiService.apiBaseUrl}/reports');
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll({
           'Authorization': 'Bearer ${authProvider.token}',
-          'Content-Type': 'application/json',
           'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'report_type_id': _selectedReportTypeId,
-          'description': _descriptionController.text,
-          'latitude': _currentPosition!.latitude,
-          'longitude': _currentPosition!.longitude,
-          'client_uuid': clientUuid,
-          'is_synchronized': true,
-        }),
-      );
+        })
+        ..fields['report_type_id'] = _selectedReportTypeId.toString()
+        ..fields['description'] = _descriptionController.text
+        ..fields['latitude'] = _currentPosition!.latitude.toString()
+        ..fields['longitude'] = _currentPosition!.longitude.toString()
+        ..fields['client_uuid'] = clientUuid
+        ..fields['is_synchronized'] = '1';
+
+      for (var file in _mediaFiles) {
+        if (await file.exists()) {
+          final length = await file.length();
+          debugPrint('Uploading file: ${file.path}, size: $length');
+          if (length > 0) {
+            request.files.add(await http.MultipartFile.fromPath(
+              'media_attachments[]',
+              file.path,
+            ));
+          } else {
+            debugPrint('Warning: Empty file skipped: ${file.path}');
+          }
+        }
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
       setState(() => _isSubmitting = false);
 
       if (response.statusCode == 201 && mounted) {
+        final data = jsonDecode(response.body);
+        if (data['report'] != null) {
+          final newReport = Report.fromJson(data['report']);
+          context.read<ReportProvider>().addReport(newReport);
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(AppLocalizations.of(context)!.success)),
         );
         context.pop();
       } else {
+        debugPrint('Submit Error: ${response.body}');
+        String errorMessage = 'Submission failed: ${response.statusCode}';
+        try {
+          final errorData = jsonDecode(response.body);
+          if (errorData['errors'] != null) {
+            errorMessage = (errorData['errors'] as Map).values.first[0].toString();
+          } else if (errorData['message'] != null) {
+            errorMessage = errorData['message'];
+          }
+        } catch (_) {}
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Submission failed: ${response.statusCode}')),
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
@@ -247,7 +347,82 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ),
                 validator: (value) => value!.isEmpty ? l10n.required : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+              Text('Media Attachments', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  IconButton.filledTonal(
+                    onPressed: () => _pickImage(ImageSource.camera),
+                    icon: const Icon(Icons.camera_alt),
+                    tooltip: 'Take Photo',
+                  ),
+                  IconButton.filledTonal(
+                    onPressed: () => _pickImage(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library),
+                    tooltip: 'Gallery',
+                  ),
+                  IconButton.filledTonal(
+                    onPressed: _pickVideo,
+                    icon: const Icon(Icons.videocam),
+                    tooltip: 'Record Video',
+                  ),
+                  IconButton.filled(
+                    onPressed: _toggleRecording,
+                    icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+                    style: IconButton.styleFrom(
+                      backgroundColor: _isRecording ? Colors.red : null,
+                    ),
+                    tooltip: 'Voice Record',
+                  ),
+                ],
+              ),
+              if (_mediaFiles.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 80,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _mediaFiles.length,
+                    itemBuilder: (context, index) {
+                      final file = _mediaFiles[index];
+                      final isAudio = file.path.endsWith('.m4a');
+                      return Container(
+                        width: 80,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Stack(
+                          children: [
+                            Center(
+                              child: isAudio 
+                                ? const Icon(Icons.audiotrack)
+                                : file.path.contains('video') || file.path.endsWith('.mp4')
+                                  ? const Icon(Icons.video_file)
+                                  : Image.file(file, fit: BoxFit.cover),
+                            ),
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: GestureDetector(
+                                onTap: () => setState(() => _mediaFiles.removeAt(index)),
+                                child: Container(
+                                  color: Colors.black54,
+                                  child: const Icon(Icons.close, size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),

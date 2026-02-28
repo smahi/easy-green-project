@@ -2,11 +2,11 @@
 
 namespace App\Filament\Resources\Reports\Schemas;
 
-use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\ViewField;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -64,12 +64,9 @@ class ReportForm
                     ]),
                 Section::make(__('Media'))
                     ->schema([
-                        FileUpload::make('media_attachments')
-                            ->multiple()
-                            ->image()
-                            ->directory('reports-media')
-                            ->columnSpanFull()
-                            ->disabled(),
+                        ViewField::make('media_attachments')
+                            ->view('filament.forms.components.media-gallery')
+                            ->columnSpanFull(),
                     ]),
             ]);
     }

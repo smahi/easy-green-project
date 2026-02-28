@@ -29,7 +29,17 @@ class StoreReportRequest extends FormRequest
             'longitude' => ['required', 'numeric', 'between:-180,180'],
             'is_synchronized' => ['nullable', 'boolean'],
             'media_attachments' => ['nullable', 'array', 'max:5'],
-            'media_attachments.*' => ['file', 'mimes:jpeg,png,jpg,mp4,mov', 'max:20480'],
+            'media_attachments.*' => ['file', 'mimes:jpeg,png,jpg,mp4,mov,m4a', 'max:20480'],
         ];
+    }
+
+    protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
+    {
+        \Log::error('Report Validation Failed', [
+            'errors' => $validator->errors()->toArray(),
+            'request' => $this->all(),
+            'files' => $this->file(),
+        ]);
+        parent::failedValidation($validator);
     }
 }

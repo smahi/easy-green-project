@@ -6,12 +6,15 @@ import 'package:go_router/go_router.dart';
 
 import 'providers/app_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/report_provider.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/create_report_screen.dart';
+import 'screens/report_detail_screen.dart';
+import 'models/report.dart';
 
 void main() {
   runApp(
@@ -19,6 +22,7 @@ void main() {
       providers: [
         ChangeNotifierProvider(create: (_) => AppProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => ReportProvider()),
       ],
       child: const EasyGreenApp(),
     ),
@@ -79,6 +83,13 @@ class EasyGreenApp extends StatelessWidget {
             GoRoute(
               path: 'create-report',
               builder: (context, state) => const CreateReportScreen(),
+            ),
+            GoRoute(
+              path: 'report-detail',
+              builder: (context, state) {
+                final report = state.extra as Report;
+                return ReportDetailScreen(report: report);
+              },
             ),
           ],
         ),
