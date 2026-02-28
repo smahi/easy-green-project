@@ -4,7 +4,9 @@ import 'package:easy_green/l10n/app_localizations.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../models/report.dart';
+import '../theme/app_theme.dart';
 
 class ReportDetailScreen extends StatelessWidget {
   final Report report;
@@ -14,13 +16,13 @@ class ReportDetailScreen extends StatelessWidget {
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'new':
-        return Colors.blue;
-      case 'in_progress':
-        return Colors.orange;
+        return const Color(0xFF3498DB);
+      case 'processing':
+        return const Color(0xFFF39C12);
       case 'resolved':
-        return Colors.green;
+        return const Color(0xFF27AE60);
       case 'rejected':
-        return Colors.red;
+        return const Color(0xFFE74C3C);
       default:
         return Colors.grey;
     }
@@ -30,83 +32,169 @@ class ReportDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final locale = Localizations.localeOf(context).languageCode;
+    final theme = Theme.of(context);
+    final statusColor = _getStatusColor(report.status);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.reports),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    report.reportType.getName(locale),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 120.0,
+            pinned: true,
+            backgroundColor: theme.colorScheme.primary,
+            foregroundColor: Colors.white,
+            flexibleSpace: FlexibleSpaceBar(
+              title: Text(
+                report.reportType.getName(locale),
+                style: GoogleFonts.lexend(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+              ),
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                    colors: [
+                      theme.colorScheme.primary,
+                      theme.colorScheme.primary.withOpacity(0.7),
+                    ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(report.status),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    report.status.toUpperCase(),
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              DateFormat.yMMMd().add_Hm().format(report.createdAt),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const Divider(height: 32),
-            Text(
-              l10n.description,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(report.getDescription(locale)),
-            const SizedBox(height: 24),
-            Text(
-              l10n.location,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text('Lat: ${report.latitude}, Long: ${report.longitude}'),
-            if (report.inspectorFeedback != null && report.getInspectorFeedback(locale).isNotEmpty) ...[
-              const Divider(height: 32),
-              Text(
-                'Inspector Feedback',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Status & Date Card
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: statusColor.withOpacity(0.5)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.circle, size: 10, color: statusColor),
+                                const SizedBox(width: 8),
+                                Text(
+                                  report.status.toUpperCase(),
+                                  style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                          Icon(Icons.calendar_today, size: 14, color: theme.hintColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            DateFormat.yMMMd().add_Hm().format(report.createdAt),
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
                     ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Description Section
+                  _buildSectionHeader(context, l10n.description, Icons.description_outlined),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: theme.dividerColor.withOpacity(0.1)),
+                    ),
+                    child: Text(
+                      report.getDescription(locale),
+                      style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Location Card
+                  _buildSectionHeader(context, l10n.location, Icons.location_on_outlined),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                        child: Icon(Icons.map_outlined, color: theme.colorScheme.primary),
+                      ),
+                      title: const Text('Coordinates'),
+                      subtitle: Text('Lat: ${report.latitude}, Long: ${report.longitude}'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.open_in_new),
+                        onPressed: () {
+                          // TODO: Open in Google Maps
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Feedback Section (if exists)
+                  if (report.inspectorFeedback != null && report.getInspectorFeedback(locale).isNotEmpty) ...[
+                    _buildSectionHeader(context, 'Inspector Feedback', Icons.feedback_outlined, color: Colors.orange),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                      ),
+                      child: Text(
+                        report.getInspectorFeedback(locale),
+                        style: theme.textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // Media Section
+                  if (report.mediaAttachments.isNotEmpty) ...[
+                    _buildSectionHeader(context, 'Media Attachments', Icons.attach_file),
+                    const SizedBox(height: 12),
+                    ...report.mediaAttachments.map((url) => MediaAttachmentWidget(url: url)),
+                  ],
+                  const SizedBox(height: 40),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(report.getInspectorFeedback(locale)),
-            ],
-            if (report.mediaAttachments.isNotEmpty) ...[
-              const Divider(height: 32),
-              Text(
-                'Attachments',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              ...report.mediaAttachments.map((url) => MediaAttachmentWidget(url: url)),
-            ],
-          ],
-        ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon, {Color? color}) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: color ?? theme.colorScheme.primary),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: color ?? theme.colorScheme.primary,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -123,21 +211,20 @@ class MediaAttachmentWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ext = _getExtension();
+    final theme = Theme.of(context);
 
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(ext)) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 16.0),
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+          ],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
-              children: [
-                Icon(Icons.image, size: 16),
-                SizedBox(width: 8),
-                Text('Image', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 8),
             GestureDetector(
               onTap: () {
                 Navigator.of(context).push(MaterialPageRoute(
@@ -145,17 +232,20 @@ class MediaAttachmentWidget extends StatelessWidget {
                 ));
               },
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  url,
-                  width: double.infinity,
-                  height: 200,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    height: 200,
+                borderRadius: BorderRadius.circular(16),
+                child: Hero(
+                  tag: url,
+                  child: Image.network(
+                    url,
                     width: double.infinity,
-                    color: Colors.grey[300],
-                    child: const Icon(Icons.broken_image, size: 50),
+                    height: 220,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      height: 200,
+                      width: double.infinity,
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: const Icon(Icons.broken_image, size: 50),
+                    ),
                   ),
                 ),
               ),
@@ -168,13 +258,14 @@ class MediaAttachmentWidget extends StatelessWidget {
     } else if (['mp3', 'wav', 'm4a', 'aac'].contains(ext)) {
       return AudioAttachment(url: url);
     } else {
-      return ListTile(
-        leading: const Icon(Icons.insert_drive_file),
-        title: Text(url.split('/').last),
-        subtitle: Text('File: $ext'),
-        onTap: () {
-          // Open generic file
-        },
+      return Card(
+        margin: const EdgeInsets.only(bottom: 16),
+        child: ListTile(
+          leading: const Icon(Icons.insert_drive_file),
+          title: Text(url.split('/').last),
+          subtitle: Text('File: $ext'),
+          onTap: () {},
+        ),
       );
     }
   }
@@ -197,14 +288,18 @@ class _VideoAttachmentState extends State<VideoAttachment> {
     super.initState();
     _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(widget.url));
     _videoPlayerController.initialize().then((_) {
-      setState(() {
-        _chewieController = ChewieController(
-          videoPlayerController: _videoPlayerController,
-          aspectRatio: _videoPlayerController.value.aspectRatio,
-          autoPlay: false,
-          looping: false,
-        );
-      });
+      if (mounted) {
+        setState(() {
+          _chewieController = ChewieController(
+            videoPlayerController: _videoPlayerController,
+            aspectRatio: _videoPlayerController.value.aspectRatio,
+            autoPlay: false,
+            looping: false,
+            cupertinoProgressColors: ChewieProgressColors(playedColor: AppTheme.primaryGreen),
+            materialProgressColors: ChewieProgressColors(playedColor: AppTheme.primaryGreen),
+          );
+        });
+      }
     });
   }
 
@@ -217,35 +312,20 @@ class _VideoAttachmentState extends State<VideoAttachment> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.videocam, size: 16),
-              SizedBox(width: 8),
-              Text('Video', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            height: 200,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: _chewieController != null && _chewieController!.videoPlayerController.value.isInitialized
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Chewie(controller: _chewieController!),
-                  )
-                : const Center(child: CircularProgressIndicator()),
-          ),
-        ],
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      height: 220,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(16),
       ),
+      child: _chewieController != null && _chewieController!.videoPlayerController.value.isInitialized
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Chewie(controller: _chewieController!),
+            )
+          : const Center(child: CircularProgressIndicator()),
     );
   }
 }
@@ -295,43 +375,53 @@ class _AudioAttachmentState extends State<AudioAttachment> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final theme = Theme.of(context);
+    return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.mic, size: 16),
-                SizedBox(width: 8),
-                Text('Voice Note', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            Row(
-              children: [
-                IconButton(
-                  icon: Icon(_playerState == PlayerState.playing ? Icons.pause : Icons.play_arrow),
-                  onPressed: _playPause,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              IconButton.filledTonal(
+                icon: Icon(_playerState == PlayerState.playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                onPressed: _playPause,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Voice Recording', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 2,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                      ),
+                      child: Slider(
+                        value: _position.inMilliseconds.toDouble(),
+                        max: _duration.inMilliseconds.toDouble() > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
+                        onChanged: (value) {
+                          _audioPlayer.seek(Duration(milliseconds: value.toInt()));
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: Slider(
-                    value: _position.inMilliseconds.toDouble(),
-                    max: _duration.inMilliseconds.toDouble() > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
-                    onChanged: (value) {
-                      _audioPlayer.seek(Duration(milliseconds: value.toInt()));
-                    },
-                  ),
-                ),
-                Text(
-                  '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              Text(
+                '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}',
+                style: GoogleFonts.lexend(fontSize: 10, color: theme.hintColor),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -345,10 +435,17 @@ class FullScreenImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, iconTheme: const IconThemeData(color: Colors.white)),
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+      ),
       body: Center(
         child: InteractiveViewer(
-          child: Image.network(url),
+          child: Hero(
+            tag: url,
+            child: Image.network(url),
+          ),
         ),
       ),
     );

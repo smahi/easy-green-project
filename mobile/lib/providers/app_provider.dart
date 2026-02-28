@@ -14,15 +14,22 @@ class AppProvider with ChangeNotifier {
 
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // Load Language
     final String? languageCode = prefs.getString('languageCode');
     if (languageCode != null) {
       _locale = Locale(languageCode);
     }
     
-    final bool? isDarkMode = prefs.getBool('isDarkMode');
-    if (isDarkMode != null) {
-      _themeMode = isDarkMode ? ThemeMode.dark : ThemeMode.light;
+    // Load Theme
+    final String? themeName = prefs.getString('themeMode');
+    if (themeName != null) {
+      _themeMode = ThemeMode.values.firstWhere(
+        (e) => e.toString() == themeName,
+        orElse: () => ThemeMode.system,
+      );
     }
+    
     notifyListeners();
   }
 
@@ -40,9 +47,7 @@ class AppProvider with ChangeNotifier {
       _themeMode = newThemeMode;
       notifyListeners();
       final prefs = await SharedPreferences.getInstance();
-      if (newThemeMode != ThemeMode.system) {
-        await prefs.setBool('isDarkMode', newThemeMode == ThemeMode.dark);
-      }
+      await prefs.setString('themeMode', newThemeMode.toString());
     }
   }
 }
