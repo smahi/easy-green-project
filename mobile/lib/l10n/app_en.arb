@@ -1,0 +1,19 @@
+{
+  "appTitle": "Easy Green",
+  "@appTitle": {
+    "description": "The title of the application"
+  },
+  "login": "Login",
+  "email": "Email",
+  "password": "Password",
+  "submit": "Submit",
+  "settings": "Settings",
+  "language": "Language",
+  "theme": "Theme",
+  "home": "Home",
+  "dark_mode": "Dark Mode",
+  "light_mode": "Light Mode",
+  "reports": "Reports",
+  "create_report": "New Report",
+  "logout": "Logout"
+}
