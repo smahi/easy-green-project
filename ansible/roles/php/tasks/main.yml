@@ -51,4 +51,11 @@
         path: "/etc/php/{{ php_version }}/fpm/php.ini"
         regexp: "^memory_limit"
         line: "memory_limit = 512M"
+
+    - name: Enable OPcache
+      lineinfile:
+        path: "/etc/php/{{ php_version }}/fpm/conf.d/10-opcache.ini"
+        regexp: "^opcache.enable"
+        line: "opcache.enable=1"
+        create: yes
   notify: Restart php-fpm

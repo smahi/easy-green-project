@@ -5,7 +5,7 @@
 | Component | Choice |
 |-----------|--------|
 | Reverse Proxy | **Caddy** (auto TLS via Let's Encrypt) |
-| PHP Runtime | **PHP 8.4-FPM** |
+| PHP Runtime | **PHP 8.5-FPM** (Laravel + Filament 5 extensions) |
 | Framework | **Laravel 12 + Filament 5** |
 | Database | **PostgreSQL 18** |
 | Cache / Queue | **Valkey** (Redis-compatible, drop-in) |
