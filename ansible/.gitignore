@@ -1,0 +1,7 @@
+# Ansible generated / sensitive files
+*.retry
+vault_pass.txt
+~/.ansible_vault_pass
+
+# Ignore encrypted vault if not using vault
+# vault.yml.encrypted

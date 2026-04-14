@@ -1,0 +1,23 @@
+---
+- name: Restart fail2ban
+  service:
+    name: fail2ban
+    state: restarted
+
+- name: Configure and enable swap
+  block:
+    - name: Create swap
+      command: mkswap /swapfile
+      args:
+        creates: /swapfile
+
+    - name: Enable swap
+      command: swapon /swapfile
+      args:
+        creates: /swapfile
+
+    - name: Add swap to fstab
+      lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+        state: present

@@ -1,0 +1,57 @@
+# =====================================================
+# EASY GREEN — Shared Variables
+# =====================================================
+
+# -- Application --
+app_name: "EASY GREEN"
+app_url_domain: "{{ domain_name }}"
+app_repo: "https://github.com/YOUR_USERNAME/easy-green-backend.git"
+app_branch: "main"
+app_deploy_user: "deploy"
+app_deploy_dir: "/var/www/easy-green"
+app_releases_dir: "{{ app_deploy_dir }}/releases"
+app_shared_dir: "{{ app_deploy_dir }}/shared"
+app_current_link: "{{ app_deploy_dir }}/current"
+
+# -- PHP --
+php_version: "8.4"
+php_fpm_pool: "www"
+php_extensions:
+  - "php{{ php_version }}-common"
+  - "php{{ php_version }}-fpm"
+  - "php{{ php_version }}-cli"
+  - "php{{ php_version }}-pgsql"
+  - "php{{ php_version }}-pdo"
+  - "php{{ php_version }}-mbstring"
+  - "php{{ php_version }}-xml"
+  - "php{{ php_version }}-curl"
+  - "php{{ php_version }}-gd"
+  - "php{{ php_version }}-intl"
+  - "php{{ php_version }}-zip"
+  - "php{{ php_version }}-bcmath"
+  - "php{{ php_version }}-redis"   # Valkey compatible
+
+# -- Database --
+db_name: "easygreen"
+db_user: "easygreen"
+db_password: "{{ vault_db_password }}"
+db_host: "127.0.0.1"
+db_port: "5432"
+
+# -- Valkey (Redis-compatible) --
+valkey_host: "127.0.0.1"
+valkey_port: "6379"
+valkey_password: "{{ vault_valkey_password }}"
+
+# -- Caddy --
+caddy_admin_email: "{{ vault_caddy_email }}"
+
+# -- Supervisor (Queue Workers) --
+queue_workers: 2
+queue_timeout: 60
+queue_max_tries: 3
+
+# -- Backups --
+backup_dir: "/var/backups/easy-green"
+backup_retention_days: 7
+backup_schedule: "daily"

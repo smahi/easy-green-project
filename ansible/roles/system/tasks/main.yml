@@ -1,0 +1,86 @@
+---
+# System Hardening & Base Packages
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Upgrade all packages to latest version
+  apt:
+    upgrade: dist
+    autoremove: yes
+
+- name: Install base system packages
+  apt:
+    name:
+      - ufw
+      - fail2ban
+      - curl
+      - git
+      - unzip
+      - zip
+      - supervisor
+      - python3-psycopg2
+      - ca-certificates
+      - gnupg
+    state: present
+
+- name: Configure UFW — allow SSH
+  ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: Configure UFW — allow HTTP (80)
+  ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: Configure UFW — allow HTTPS (443)
+  ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+
+- name: Enable UFW (if not already enabled)
+  ufw:
+    state: enabled
+    policy: deny
+  when: env == "production"
+
+- name: Deploy fail2ban SSH jail
+  template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Enable and start fail2ban
+  service:
+    name: fail2ban
+    state: started
+    enabled: yes
+
+- name: Create deploy user
+  user:
+    name: "{{ app_deploy_user }}"
+    shell: /bin/bash
+    groups: www-data
+    append: yes
+    create_home: yes
+    system: no
+
+- name: Set swap file (2 GB)
+  command: fallocate -l 2G /swapfile
+  args:
+    creates: /swapfile
+  notify: Configure and enable swap
+
+- name: Set permissions on swap file
+  file:
+    path: /swapfile
+    mode: "0600"
+  notify: Configure and enable swap

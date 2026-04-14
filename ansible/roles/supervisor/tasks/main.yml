@@ -1,0 +1,31 @@
+---
+# Supervisor — Laravel Queue Workers
+- name: Install Supervisor
+  apt:
+    name:
+      - supervisor
+    state: present
+  notify: Restart supervisor
+
+- name: Start and enable Supervisor
+  service:
+    name: supervisor
+    state: started
+    enabled: yes
+
+- name: Deploy queue worker config
+  template:
+    src: laravel-queue.conf.j2
+    dest: /etc/supervisor/conf.d/laravel-queue.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart supervisor
+
+- name: Update supervisor config
+  command: supervisorctl reread
+  changed_when: false
+
+- name: Add new supervisor programs
+  command: supervisorctl update
+  changed_when: false

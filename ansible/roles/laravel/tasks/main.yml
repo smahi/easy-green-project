@@ -1,0 +1,108 @@
+---
+# Laravel Application Deployment (Capistrano-style releases)
+- name: Create deployment directory structure
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+    recurse: yes
+  with_items:
+    - "{{ app_deploy_dir }}"
+    - "{{ app_releases_dir }}"
+    - "{{ app_shared_dir }}/storage/framework/cache"
+    - "{{ app_shared_dir }}/storage/framework/sessions"
+    - "{{ app_shared_dir }}/storage/framework/views"
+    - "{{ app_shared_dir }}/storage/logs"
+    - "{{ app_shared_dir }}/bootstrap/cache"
+
+- name: Clone or update application code
+  git:
+    repo: "{{ app_repo }}"
+    dest: "{{ app_releases_dir }}/{{ ansible_date_time.iso8601_basic_short }}"
+    version: "{{ app_branch }}"
+    accept_hostkey: yes
+    depth: 1
+  register: git_clone
+
+- name: Set release path fact
+  set_fact:
+    release_path: "{{ app_releases_dir }}/{{ ansible_date_time.iso8601_basic_short }}"
+
+- name: Create .env file for release
+  template:
+    src: env.j2
+    dest: "{{ release_path }}/.env"
+    owner: "{{ app_deploy_user }}"
+    group: www-data
+    mode: "0640"
+
+- name: Link shared storage directory
+  file:
+    src: "{{ app_shared_dir }}/storage"
+    dest: "{{ release_path }}/storage"
+    state: link
+
+- name: Link shared bootstrap/cache directory
+  file:
+    src: "{{ app_shared_dir }}/bootstrap/cache"
+    dest: "{{ release_path }}/bootstrap/cache"
+    state: link
+
+- name: Install Composer dependencies (no-dev)
+  composer:
+    command: install
+    working_dir: "{{ release_path }}"
+    no_dev: yes
+    optimize_autoloader: yes
+    no_scripts: yes
+
+- name: Run post-install artisan commands
+  command: "{{ item }}"
+  args:
+    chdir: "{{ release_path }}"
+  environment:
+    APP_ENV: "{{ env }}"
+  with_items:
+    - "php artisan config:clear"
+    - "php artisan cache:clear"
+    - "php artisan view:cache"
+    - "php artisan event:cache"
+    - "php artisan filament:upgrade"
+    - "php artisan db:seed --class=ShieldSeeder --force"
+  changed_when: false
+
+- name: Run database migrations
+  command: php artisan migrate --force
+  args:
+    chdir: "{{ release_path }}"
+  environment:
+    APP_ENV: "{{ env }}"
+
+- name: Set correct ownership on release
+  file:
+    path: "{{ release_path }}"
+    owner: "{{ app_deploy_user }}"
+    group: www-data
+    recurse: yes
+
+- name: Set correct permissions on storage and cache
+  file:
+    path: "{{ release_path }}/{{ item }}"
+    mode: "0775"
+    recurse: no
+  with_items:
+    - storage
+    - bootstrap/cache
+
+- name: Update current symlink
+  file:
+    src: "{{ release_path }}"
+    dest: "{{ app_current_link }}"
+    state: link
+    force: yes
+
+- name: Clean old releases (keep last 5)
+  shell: |
+    cd "{{ app_releases_dir }}" && ls -t | tail -n +6 | xargs -r rm -rf
+  args:
+    warn: false

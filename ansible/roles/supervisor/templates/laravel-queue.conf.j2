@@ -1,0 +1,15 @@
+[program:laravel-queue]
+process_name=%(program_name)s_%(process_num)02d
+command=php {{ app_current_link }}/artisan queue:work --sleep=3 --tries={{ queue_max_tries }} --timeout={{ queue_timeout }}
+user={{ app_deploy_user }}
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+numprocs={{ queue_workers }}
+startsecs=0
+stopwaitsecs=3600
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/laravel-queue_%(process_num)02d.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=3

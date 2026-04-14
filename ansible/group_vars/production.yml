@@ -1,0 +1,8 @@
+# -- Production overrides --
+env: production
+app_debug: false
+app_log_level: "error"
+caddy_admin_email: "admin@easygreen.dz"
+caddy_tls_mode: "letsencrypt"
+
+backups_enabled: true

@@ -1,0 +1,12 @@
+# -- Staging overrides --
+env: staging
+app_branch: "main"
+app_debug: true
+app_log_level: "debug"
+caddy_admin_email: "admin@staging.local"
+
+# No Let's Encrypt in staging — use self-signed
+caddy_tls_mode: "internal"
+
+# Skip backups in staging
+backups_enabled: false

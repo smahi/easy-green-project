@@ -1,0 +1,15 @@
+# =====================================================
+# ENCRYPTED VAULT — Secrets (ansible-vault encrypt this file)
+# =====================================================
+# Run: ansible-vault encrypt ansible/vault.yml
+# Edit: ansible-vault edit ansible/vault.yml
+# =====================================================
+
+vault_db_password: "CHANGE_ME_db_password_32chars!"
+vault_valkey_password: "CHANGE_ME_valkey_32chars!"
+vault_caddy_email: "admin@easygreen.dz"
+vault_app_key: "CHANGE_ME_run_php_artisan_key_generate"
+vault_smtp_host: "smtp.example.com"
+vault_smtp_port: "587"
+vault_smtp_user: "noreply@easygreen.dz"
+vault_smtp_password: "CHANGE_ME_smtp_password"

@@ -1,0 +1,50 @@
+---
+# PostgreSQL 18 Installation & Setup
+- name: Add PostgreSQL APT key
+  apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+
+- name: Add PostgreSQL APT repository
+  apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+
+- name: Install PostgreSQL 18
+  apt:
+    name:
+      - postgresql-18
+      - postgresql-client-18
+      - postgresql-contrib-18
+    state: present
+  notify: Restart PostgreSQL
+
+- name: Start and enable PostgreSQL
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Check if DB user exists
+  become: yes
+  become_user: postgres
+  postgresql_user:
+    name: "{{ db_user }}"
+    password: "{{ db_password }}"
+    state: present
+
+- name: Create application database
+  become: yes
+  become_user: postgres
+  postgresql_db:
+    name: "{{ db_name }}"
+    owner: "{{ db_user }}"
+    encoding: UTF-8
+    state: present
+
+- name: Configure PostgreSQL — listen on localhost only
+  lineinfile:
+    path: "/etc/postgresql/18/main/postgresql.conf"
+    regexp: "^#?listen_addresses"
+    line: "listen_addresses = 'localhost'"
+  notify: Restart PostgreSQL

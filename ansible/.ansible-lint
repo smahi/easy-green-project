@@ -1,0 +1,16 @@
+# =====================================================
+# Ansible Lint Configuration
+# =====================================================
+# Install: pip install ansible-lint
+# Run: ansible-lint ansible/deploy.yml
+# =====================================================
+
+skip_list:
+  - name[casing]           # Role names can use dashes
+  - var-naming[no-role-prefix]  # We prefix carefully
+
+warn_list:
+  - experimental
+
+parseable: true
+use_default_rules: true

@@ -1,0 +1,67 @@
+# =====================================================
+# EASY GREEN — Full Deployment Playbook
+# =====================================================
+# Usage:
+#
+#   # Test on staging (u24 multipass VM)
+#   ansible-playbook -i ansible/inventory/staging.ini ansible/deploy.yml --ask-vault-pass
+#
+#   # Deploy to production
+#   ansible-playbook -i ansible/inventory/production.ini ansible/deploy.yml --ask-vault-pass
+#
+#   # Only run app deployment (after infra is set up)
+#   ansible-playbook -i ansible/inventory/staging.ini ansible/deploy.yml --ask-vault-pass --tags "deploy"
+#
+# =====================================================
+---
+- name: Provision server infrastructure
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - ../vault.yml
+
+  roles:
+    # 1. System hardening & base packages
+    - role: system
+
+    # 2. Database
+    - role: postgresql
+
+    # 3. Cache / Queue backend
+    - role: valkey
+
+    # 4. PHP runtime
+    - role: php
+
+    # 5. Reverse proxy / TLS
+    - role: caddy
+
+  tags:
+    - infra
+
+- name: Deploy Laravel application
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - ../vault.yml
+
+  roles:
+    # 6. Node.js + Vite asset build
+    - role: node
+
+    # 7. Laravel app deployment (code, .env, migrate, permissions)
+    - role: laravel
+
+    # 8. Queue workers (Supervisor)
+    - role: supervisor
+
+    # 9. Database backups (production only)
+    - role: backups
+      when: backups_enabled is defined and backups_enabled
+
+  tags:
+    - deploy

@@ -1,0 +1,44 @@
+# =====================================================
+# Caddyfile — EASY GREEN
+# =====================================================
+
+{{ app_url_domain }} {
+{% if caddy_tls_mode == "letsencrypt" %}
+    tls {{ caddy_admin_email }}
+{% else %}
+    tls internal
+{% endif %}
+
+    # Root directory — serve static assets directly
+    root * {{ app_releases_dir }}/current/public
+
+    # PHP-FPM via unix socket
+    php_fastcgi unix//run/php/php{{ php_version }}-fpm.sock {
+        root {{ app_releases_dir }}/current/public
+        index index.php
+    }
+
+    # Serve static assets with long cache
+    @static {
+        path *.css *.js *.png *.jpg *.jpeg *.gif *.ico *.svg *.woff *.woff2 *.ttf *.eot
+    }
+    header @static Cache-Control "public, max-age=31536000, immutable"
+
+    # Security headers
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # Deny access to hidden files
+    @hidden {
+        path /.ht* /.env* /storage/* /bootstrap/cache/*
+    }
+    respond @hidden 403
+
+    file_server
+    encode gzip zstd
+}

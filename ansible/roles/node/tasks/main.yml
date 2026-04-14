@@ -1,0 +1,36 @@
+---
+# Node.js Installation & Vite Build
+- name: Add NodeSource GPG key
+  apt_key:
+    url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    state: present
+
+- name: Add NodeSource repository (Node.js 22 LTS)
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main"
+    state: present
+
+- name: Install Node.js and npm
+  apt:
+    name:
+      - nodejs
+    state: present
+
+- name: Verify Node.js version
+  command: node --version
+  register: node_version
+  changed_when: false
+
+- name: Install npm dependencies
+  npm:
+    path: "{{ app_releases_dir }}/current"
+    production: yes
+    state: present
+  when: node_version.rc == 0
+
+- name: Build Vite assets
+  command: npm run build
+  args:
+    chdir: "{{ app_releases_dir }}/current"
+  environment:
+    NODE_ENV: production
