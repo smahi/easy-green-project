@@ -3,13 +3,16 @@
 namespace App\Providers;
 
 use BezhanSalleh\LanguageSwitch\LanguageSwitch;
+use App\Policies\RolePolicy;
 use Carbon\CarbonImmutable;
 use Filament\Forms\Components\Field;
 use Filament\Tables\Columns\Column;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Spatie\Permission\Models\Role;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -18,7 +21,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        config([
+            'filament-shield.register_role_policy' => false,
+            'filament-shield.super_admin.define_via_gate' => true,
+        ]);
     }
 
     /**
@@ -26,6 +32,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::policy(Role::class, RolePolicy::class);
+
         Field::configureUsing(function (Field $field): void {
             $field->translateLabel();
         });
@@ -64,5 +72,3 @@ class AppServiceProvider extends ServiceProvider
         );
     }
 }
-
-

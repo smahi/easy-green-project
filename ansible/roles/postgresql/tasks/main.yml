@@ -1,21 +1,36 @@
 ---
-# PostgreSQL 18 Installation & Setup
-- name: Add PostgreSQL APT key
-  apt_key:
-    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+# PostgreSQL 18+ Installation & Setup
+- name: Install PostgreSQL repository prerequisites
+  apt:
+    name:
+      - ca-certificates
+      - gnupg
     state: present
+
+- name: Download PostgreSQL signing key
+  get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /tmp/postgresql.asc
+    mode: "0644"
+
+- name: Install PostgreSQL signing key
+  command: gpg --dearmor -o /usr/share/keyrings/postgresql.gpg /tmp/postgresql.asc
+  args:
+    creates: /usr/share/keyrings/postgresql.gpg
 
 - name: Add PostgreSQL APT repository
   apt_repository:
-    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
     state: present
+    filename: pgdg
+    update_cache: yes
 
-- name: Install PostgreSQL 18
+- name: Install PostgreSQL {{ postgresql_version }}
   apt:
     name:
-      - postgresql-18
-      - postgresql-client-18
-      - postgresql-contrib-18
+      - "postgresql-{{ postgresql_version }}"
+      - "postgresql-client-{{ postgresql_version }}"
+      - "postgresql-contrib-{{ postgresql_version }}"
     state: present
   notify: Restart PostgreSQL
 
@@ -25,26 +40,63 @@
     state: started
     enabled: yes
 
-- name: Check if DB user exists
-  become: yes
-  become_user: postgres
-  postgresql_user:
-    name: "{{ db_user }}"
-    password: "{{ db_password }}"
-    state: present
-
-- name: Create application database
-  become: yes
-  become_user: postgres
-  postgresql_db:
-    name: "{{ db_name }}"
-    owner: "{{ db_user }}"
-    encoding: UTF-8
-    state: present
-
 - name: Configure PostgreSQL — listen on localhost only
   lineinfile:
-    path: "/etc/postgresql/18/main/postgresql.conf"
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
     regexp: "^#?listen_addresses"
     line: "listen_addresses = 'localhost'"
   notify: Restart PostgreSQL
+
+- name: Configure PostgreSQL — use scram-sha-256 password encryption
+  lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?password_encryption"
+    line: "password_encryption = scram-sha-256"
+  notify: Restart PostgreSQL
+
+- name: Configure PostgreSQL client authentication
+  copy:
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    content: |
+      local   all             postgres                                peer
+      local   all             all                                     peer
+      host    all             all             127.0.0.1/32            scram-sha-256
+      host    all             all             ::1/128                 scram-sha-256
+      local   replication     all                                     peer
+      host    replication     all             127.0.0.1/32            scram-sha-256
+      host    replication     all             ::1/128                 scram-sha-256
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Restart PostgreSQL
+
+- name: Apply PostgreSQL configuration changes
+  meta: flush_handlers
+
+- name: Check whether application database role exists
+  become_user: postgres
+  command: "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='{{ db_user }}'\""
+  register: pg_role_exists
+  changed_when: false
+
+- name: Create application database role
+  become_user: postgres
+  command: "psql -c \"CREATE ROLE \\\"{{ db_user }}\\\" LOGIN PASSWORD '{{ db_password }}'\""
+  when: pg_role_exists.stdout | trim != "1"
+  no_log: true
+
+- name: Update application database role password
+  become_user: postgres
+  command: "psql -c \"ALTER ROLE \\\"{{ db_user }}\\\" WITH LOGIN PASSWORD '{{ db_password }}'\""
+  no_log: true
+
+- name: Check whether application database exists
+  become_user: postgres
+  command: "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='{{ db_name }}'\""
+  register: pg_database_exists
+  changed_when: false
+
+- name: Create application database
+  become_user: postgres
+  command: "createdb --owner={{ db_user }} --encoding=UTF8 {{ db_name }}"
+  when: pg_database_exists.stdout | trim != "1"

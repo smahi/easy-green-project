@@ -1,12 +1,20 @@
 # -- Staging overrides --
 env: staging
-app_branch: "main"
+domain_name: "{{ ansible_host }}"
 app_debug: true
 app_log_level: "debug"
 caddy_admin_email: "admin@staging.local"
 
-# No Let's Encrypt in staging — use self-signed
-caddy_tls_mode: "internal"
+# Use plain HTTP on the VM IP for local multipass testing.
+caddy_tls_mode: "disabled"
 
 # Skip backups in staging
 backups_enabled: false
+
+system_upgrade_packages: false
+mail_mailer: "log"
+mail_scheme: "null"
+mail_host: "127.0.0.1"
+mail_port: "2525"
+mail_username: "null"
+mail_password: "null"

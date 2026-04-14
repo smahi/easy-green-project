@@ -7,7 +7,7 @@
 | Reverse Proxy | **Caddy** (auto TLS via Let's Encrypt) |
 | PHP Runtime | **PHP 8.5-FPM** (Laravel + Filament 5 extensions) |
 | Framework | **Laravel 12 + Filament 5** |
-| Database | **PostgreSQL 18** |
+| Database | **PostgreSQL 18+** |
 | Cache / Queue | **Valkey** (Redis-compatible, drop-in) |
 | Queue Workers | **Supervisor** |
 | Asset Build | **Node.js 22 + Vite** |
@@ -26,9 +26,9 @@ ansible/
 │   └── production.yml      # Production overrides
 ├── roles/
 │   ├── system/             # Hardening, firewall, fail2ban, deploy user
-│   ├── postgresql/         # PG18 install + DB + user
+│   ├── postgresql/         # PG18+ install + DB + user
 │   ├── valkey/             # Valkey install + password config
-│   ├── php/                # PHP-FPM 8.4 + extensions + pool
+│   ├── php/                # PHP-FPM 8.5 + extensions + pool
 │   ├── caddy/              # Caddy install + Caddyfile (auto TLS)
 │   ├── node/               # Node.js 22 + npm install + vite build
 │   ├── laravel/            # Git checkout, .env, migrate, permissions
@@ -150,7 +150,7 @@ multipass restore u24 --name <snapshot_name>
 | `app_url_domain` | Domain name for Caddy TLS |
 | `db_name` / `db_user` / `db_password` | PostgreSQL credentials |
 | `valkey_host` / `valkey_password` | Valkey credentials |
-| `php_version` | PHP version (default 8.4) |
+| `php_version` | PHP version (default 8.5) |
 | `queue_workers` | Number of queue worker processes |
 | `backup_retention_days` | How many days to keep backups |
 

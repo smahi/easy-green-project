@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ansible-vault *)",
+      "Bash(php *)",
+      "Bash(ansible-playbook *)",
+      "Bash(ssh *)",
+      "Bash(sleep *)",
+      "Bash(dig *)",
+      "Bash(nslookup *)"
+    ]
+  },
+  "$version": 3
+}

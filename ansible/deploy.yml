@@ -20,7 +20,7 @@
   gather_facts: yes
 
   vars_files:
-    - ../vault.yml
+    - vault.yml
 
   roles:
     # 1. System hardening & base packages
@@ -47,14 +47,14 @@
   gather_facts: yes
 
   vars_files:
-    - ../vault.yml
+    - vault.yml
 
   roles:
-    # 6. Node.js + Vite asset build
-    - role: node
-
-    # 7. Laravel app deployment (code, .env, migrate, permissions)
+    # 6. Laravel app deployment (code, .env, migrate, permissions)
     - role: laravel
+
+    # 7. Node.js + Vite asset build (after code is deployed)
+    - role: node
 
     # 8. Queue workers (Supervisor)
     - role: supervisor
@@ -62,6 +62,14 @@
     # 9. Database backups (production only)
     - role: backups
       when: backups_enabled is defined and backups_enabled
+
+  post_tasks:
+    - name: Finalize release
+      command: "{{ php_binary }} {{ app_current_link }}/artisan queue:restart"
+      args:
+        chdir: "{{ app_current_link }}"
+      changed_when: false
+      failed_when: false
 
   tags:
     - deploy

@@ -1,14 +1,25 @@
 ---
 # Node.js Installation & Vite Build
-- name: Add NodeSource GPG key
-  apt_key:
-    url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
-    state: present
+- name: Create keyrings directory
+  file:
+    path: /usr/share/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download and install NodeSource GPG key
+  shell: |
+    wget -qO /tmp/nodesource.gpg.key https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    gpg --dearmor -o /usr/share/keyrings/nodesource.gpg /tmp/nodesource.gpg.key
+    rm -f /tmp/nodesource.gpg.key
+  args:
+    creates: /usr/share/keyrings/nodesource.gpg
 
 - name: Add NodeSource repository (Node.js 22 LTS)
   apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main"
+    repo: "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_{{ node_major_version }}.x nodistro main"
     state: present
+    filename: nodesource
+    update_cache: yes
 
 - name: Install Node.js and npm
   apt:
@@ -21,16 +32,17 @@
   register: node_version
   changed_when: false
 
-- name: Install npm dependencies
-  npm:
-    path: "{{ app_releases_dir }}/current"
-    production: yes
-    state: present
+- name: Install npm dependencies for release
+  become_user: "{{ app_deploy_user }}"
+  command: npm ci
+  args:
+    chdir: "{{ release_path }}"
   when: node_version.rc == 0
 
 - name: Build Vite assets
+  become_user: "{{ app_deploy_user }}"
   command: npm run build
   args:
-    chdir: "{{ app_releases_dir }}/current"
+    chdir: "{{ release_path }}"
   environment:
     NODE_ENV: production

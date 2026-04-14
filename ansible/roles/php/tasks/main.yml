@@ -1,15 +1,20 @@
 ---
-# PHP 8.4 FPM + Extensions
+# PHP 8.5+ FPM + Extensions
 - name: Add Ondřej PHP PPA (for latest PHP)
   apt_repository:
     repo: "ppa:ondrej/php"
     state: present
+    update_cache: yes
 
 - name: Install PHP packages
   apt:
     name: "{{ php_extensions }}"
     state: present
   notify: Restart php-fpm
+
+- name: Pin default PHP CLI to configured version
+  command: "update-alternatives --set php {{ php_binary }}"
+  changed_when: false
 
 - name: Start and enable PHP-FPM
   service:
@@ -59,3 +64,8 @@
         line: "opcache.enable=1"
         create: yes
   notify: Restart php-fpm
+
+- name: Verify installed PHP version
+  command: "{{ php_binary }} --version"
+  register: php_version_output
+  changed_when: false

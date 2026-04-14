@@ -1,16 +1,6 @@
 ---
 # Caddy Server Installation & Configuration
-- name: Install Caddy GPG key
-  apt_key:
-    url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
-    state: present
-
-- name: Add Caddy APT repository
-  apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/{{ ansible_distribution|lower }} {{ ansible_distribution_release }} main"
-    state: present
-
-- name: Install Caddy
+- name: Install Caddy from Ubuntu repositories
   apt:
     name:
       - caddy
@@ -30,4 +20,5 @@
     owner: root
     group: root
     mode: "0644"
+    validate: "caddy validate --adapter caddyfile --config %s"
   notify: Reload caddy

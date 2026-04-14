@@ -4,40 +4,48 @@
 
 # -- Application --
 app_name: "EASY GREEN"
+domain_name: "easygreen.local"
 app_url_domain: "{{ domain_name }}"
-app_repo: "https://github.com/YOUR_USERNAME/easy-green-backend.git"
-app_branch: "main"
+app_url_scheme: "{{ 'https' if caddy_tls_mode != 'disabled' else 'http' }}"
 app_deploy_user: "deploy"
 app_deploy_dir: "/var/www/easy-green"
 app_releases_dir: "{{ app_deploy_dir }}/releases"
 app_shared_dir: "{{ app_deploy_dir }}/shared"
 app_current_link: "{{ app_deploy_dir }}/current"
+app_local_source_dir: "{{ playbook_dir }}/../backend/"
+app_release_keep: 5
+app_shared_directories:
+  - storage/app
+  - storage/app/private
+  - storage/app/public
+  - storage/framework/cache
+  - storage/framework/sessions
+  - storage/framework/testing
+  - storage/framework/views
+  - storage/logs
+  - bootstrap/cache
+laravel_seeders:
+  - RolesSeeder
+  - WilayasSeeder
+  - BaladyasSeeder
+  - ReportTypesSeeder
+app_superuser_name: "{{ vault_app_superuser_name }}"
+app_superuser_email: "{{ vault_app_superuser_email }}"
+app_superuser_password: "{{ vault_app_superuser_password }}"
 
 # -- PHP --
 php_version: "8.5"
+php_binary: "/usr/bin/php{{ php_version }}"
 php_fpm_pool: "www"
 php_extensions:
-  # Laravel core requirements
+  # Core (most Laravel built-ins are in common)
+  - composer
   - "php{{ php_version }}-common"
   - "php{{ php_version }}-fpm"
   - "php{{ php_version }}-cli"
-  - "php{{ php_version }}-ctype"
-  - "php{{ php_version }}-curl"
-  - "php{{ php_version }}-dom"
-  - "php{{ php_version }}-fileinfo"
-  - "php{{ php_version }}-filter"
-  - "php{{ php_version }}-hash"
-  - "php{{ php_version }}-mbstring"
-  - "php{{ php_version }}-openssl"
-  - "php{{ php_version }}-pcre"
-  - "php{{ php_version }}-pdo"
-  - "php{{ php_version }}-session"
-  - "php{{ php_version }}-tokenizer"
-  - "php{{ php_version }}-xml"
-  # PostgreSQL database
+  # Database
   - "php{{ php_version }}-pgsql"
-  - "php{{ php_version }}-pdo-pgsql"
-  # Valkey / Redis support
+  # Valkey / Redis
   - "php{{ php_version }}-redis"
   # Filament + Laravel ecosystem
   - "php{{ php_version }}-gd"
@@ -46,14 +54,15 @@ php_extensions:
   - "php{{ php_version }}-bcmath"
   - "php{{ php_version }}-gmp"
   - "php{{ php_version }}-imagick"
+  - "php{{ php_version }}-curl"
+  - "php{{ php_version }}-mbstring"
   # Image processing (Leaflet maps, media uploads)
-  - "php{{ php_version }}-exif"
+  - "php{{ php_version }}-xml"
   # Performance & caching
-  - "php{{ php_version }}-opcache"
-  # Translatable (spatie/laravel-translatable)
-  - "php{{ php_version }}-json"
+  - "php{{ php_version }}-apcu"
 
 # -- Database --
+postgresql_version: "18"
 db_name: "easygreen"
 db_user: "easygreen"
 db_password: "{{ vault_db_password }}"
@@ -67,11 +76,29 @@ valkey_password: "{{ vault_valkey_password }}"
 
 # -- Caddy --
 caddy_admin_email: "{{ vault_caddy_email }}"
+caddy_tls_mode: "letsencrypt"
+
+# -- Mail --
+mail_mailer: "smtp"
+mail_scheme: "tls"
+mail_host: "{{ vault_smtp_host }}"
+mail_port: "{{ vault_smtp_port }}"
+mail_username: "{{ vault_smtp_user }}"
+mail_password: "{{ vault_smtp_password }}"
 
 # -- Supervisor (Queue Workers) --
 queue_workers: 2
 queue_timeout: 60
 queue_max_tries: 3
+
+# -- Node.js --
+node_major_version: "22"
+
+# -- System --
+apt_cache_valid_time: 3600
+swap_file_path: "/swapfile"
+swap_file_size: "2G"
+system_upgrade_packages: false
 
 # -- Backups --
 backup_dir: "/var/backups/easy-green"

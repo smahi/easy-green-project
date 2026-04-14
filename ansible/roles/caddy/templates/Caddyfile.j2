@@ -2,19 +2,23 @@
 # Caddyfile — EASY GREEN
 # =====================================================
 
+{% if caddy_tls_mode == "disabled" %}
+http://{{ app_url_domain }} {
+{% else %}
 {{ app_url_domain }} {
 {% if caddy_tls_mode == "letsencrypt" %}
     tls {{ caddy_admin_email }}
 {% else %}
     tls internal
 {% endif %}
+{% endif %}
 
     # Root directory — serve static assets directly
-    root * {{ app_releases_dir }}/current/public
+    root * {{ app_current_link }}/public
 
     # PHP-FPM via unix socket
     php_fastcgi unix//run/php/php{{ php_version }}-fpm.sock {
-        root {{ app_releases_dir }}/current/public
+        root {{ app_current_link }}/public
         index index.php
     }
 
@@ -35,7 +39,7 @@
 
     # Deny access to hidden files
     @hidden {
-        path /.ht* /.env* /storage/* /bootstrap/cache/*
+        path /.ht* /.env* /.git* /.svn*
     }
     respond @hidden 403
 

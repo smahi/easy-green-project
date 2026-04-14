@@ -67,7 +67,7 @@ return [
     'super_admin' => [
         'enabled' => true,
         'name' => 'superuser',
-        'define_via_gate' => false,
+        'define_via_gate' => true,
         'intercept_gate' => 'before',
     ],
 
@@ -122,7 +122,7 @@ return [
         'merge' => true,
         'generate' => true,
         'methods' => [
-            'viewAny', 'view', 'create', 'update', 'delete', 'restore',
+            'viewAny', 'view', 'create', 'update', 'delete', 'deleteAny', 'restore',
             'forceDelete', 'forceDeleteAny', 'restoreAny', 'replicate', 'reorder',
         ],
         'single_parameter_methods' => [
@@ -258,6 +258,6 @@ return [
     |
     */
 
-    'register_role_policy' => true,
+    'register_role_policy' => false,
 
 ];

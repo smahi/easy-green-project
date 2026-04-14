@@ -20,7 +20,7 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart supervisor
+  notify: Reload supervisor
 
 - name: Update supervisor config
   command: supervisorctl reread

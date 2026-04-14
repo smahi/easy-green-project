@@ -3,26 +3,30 @@
 - name: Update apt cache
   apt:
     update_cache: yes
-    cache_valid_time: 3600
+    cache_valid_time: "{{ apt_cache_valid_time }}"
 
-- name: Upgrade all packages to latest version
+- name: Upgrade installed packages
   apt:
     upgrade: dist
     autoremove: yes
+  when: system_upgrade_packages | bool
 
 - name: Install base system packages
   apt:
     name:
+      - acl
       - ufw
       - fail2ban
       - curl
       - git
+      - rsync
       - unzip
       - zip
       - supervisor
       - python3-psycopg2
       - ca-certificates
       - gnupg
+      - software-properties-common
     state: present
 
 - name: Configure UFW — allow SSH
@@ -73,14 +77,42 @@
     create_home: yes
     system: no
 
-- name: Set swap file (2 GB)
-  command: fallocate -l 2G /swapfile
-  args:
-    creates: /swapfile
-  notify: Configure and enable swap
+- name: Check whether swap file exists
+  stat:
+    path: "{{ swap_file_path }}"
+  register: swap_file
+
+- name: Inspect swap file signature
+  command: "file -s {{ swap_file_path }}"
+  register: swap_signature
+  changed_when: false
+  failed_when: false
+  when: swap_file.stat.exists
+
+- name: Create swap file
+  command: "fallocate -l {{ swap_file_size }} {{ swap_file_path }}"
+  when: not swap_file.stat.exists
 
 - name: Set permissions on swap file
   file:
-    path: /swapfile
+    path: "{{ swap_file_path }}"
     mode: "0600"
-  notify: Configure and enable swap
+
+- name: Initialize swap file
+  command: "mkswap {{ swap_file_path }}"
+  register: mkswap_result
+  when: not swap_file.stat.exists or ('swap file' not in (swap_signature.stdout | default('') | lower))
+
+- name: Persist swap in fstab
+  mount:
+    name: none
+    src: "{{ swap_file_path }}"
+    fstype: swap
+    opts: sw
+    state: present
+
+- name: Enable swap
+  command: "swapon {{ swap_file_path }}"
+  when:
+    - ansible_swaptotal_mb | int == 0
+    - not swap_file.stat.exists or ('swap file' in (swap_signature.stdout | default('') | lower)) or (mkswap_result is defined and mkswap_result is changed)

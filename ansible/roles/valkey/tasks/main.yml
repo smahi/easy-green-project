@@ -1,27 +1,12 @@
 ---
 # Valkey (Redis-compatible) Installation & Config
-- name: Install prerequisites
-  apt:
-    name:
-      - wget
-      - gnupg
-    state: present
-
-- name: Add Valkey APT GPG key
-  apt_key:
-    url: https://packages.valkey.io/valkey-gpg-keyring.gpg
-    state: present
-
-- name: Add Valkey APT repository
-  apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/valkey.gpg] https://packages.valkey.io/apt/{{ ansible_distribution|lower }}-{{ ansible_distribution_version }} main"
-    state: present
+# Valkey is available in default Ubuntu 24.04 repos
 
 - name: Install Valkey server
   apt:
     name:
-      - valkey
       - valkey-server
+      - valkey-tools
     state: present
   notify: Restart valkey
 
