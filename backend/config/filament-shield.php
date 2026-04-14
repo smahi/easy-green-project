@@ -118,7 +118,7 @@ return [
     */
 
     'policies' => [
-        'path' => app_path('Policies'),
+        'path' => 'app/Policies',
         'merge' => true,
         'generate' => true,
         'methods' => [
