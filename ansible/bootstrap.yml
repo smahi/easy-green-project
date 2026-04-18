@@ -1,0 +1,28 @@
+---
+- name: Bootstrap server (run once)
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars_files:
+    - vault.yml
+
+  roles:
+    - system
+    - postgresql
+    - valkey
+    - php
+    - caddy
+
+    # Laravel base structure
+    - role: bootstrap_laravel
+      vars:
+        app_name: easy-green
+        app_base_dir: /var/www/easy-green
+        app_deploy_user: "{{ansible_user}}"
+        app_group: www-data
+        app_env: production
+        app_release_keep: 5
+
+  tags:
+    - bootstrap

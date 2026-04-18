@@ -1,0 +1,10 @@
+app_name: easy-green
+app_base_dir: /var/www/easy-green
+
+app_deploy_user: rihab
+app_group: www-data
+
+app_env: production
+app_release_keep: 5
+
+php_binary: /usr/bin/php

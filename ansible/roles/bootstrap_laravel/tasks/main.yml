@@ -1,0 +1,102 @@
+---
+# =========================
+# BASE DIRECTORIES
+# =========================
+
+- name: Create base directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ app_deploy_user }}"
+    group: "{{ app_group }}"
+    mode: "0755"
+  loop:
+    - "{{ app_base_dir }}"
+    - "{{ app_base_dir }}/releases"
+    - "{{ app_base_dir }}/shared"
+    - "{{ app_base_dir }}/current"
+    - "{{ app_base_dir }}/shared/storage"
+    - "{{ app_base_dir }}/shared/bootstrap/cache"
+
+# =========================
+# FIX PERMISSIONS (SAFE)
+# =========================
+
+- name: Ensure shared writable permissions
+  ansible.builtin.file:
+    path: "{{ app_base_dir }}/shared"
+    state: directory
+    owner: "{{ app_deploy_user }}"
+    group: "{{ app_group }}"
+    mode: "2775"
+    recurse: yes
+
+# =========================
+# ENV FILE (SHARED)
+# =========================
+
+- name: Create shared .env if missing
+  ansible.builtin.copy:
+    dest: "{{ app_base_dir }}/shared/.env"
+    content: |
+      APP_NAME={{ app_name }}
+      APP_ENV={{ app_env }}
+    owner: "{{ app_deploy_user }}"
+    group: "{{ app_group }}"
+    mode: "0640"
+    force: no
+
+# =========================
+# RELEASE POLICY
+# =========================
+
+- name: Store release retention policy
+  ansible.builtin.copy:
+    dest: "{{ app_base_dir }}/release_keep"
+    content: "{{ app_release_keep }}"
+    owner: "{{ app_deploy_user }}"
+    group: "{{ app_group }}"
+    mode: "0644"
+
+# =========================
+# CURRENT SYMLINK INIT
+# =========================
+
+- name: Initialize current symlink if missing
+  ansible.builtin.file:
+    src: "{{ app_base_dir }}/releases"
+    dest: "{{ app_base_dir }}/current"
+    state: link
+    force: no
+
+# =========================
+# SYSTEM ENV VARIABLES
+# =========================
+
+- name: Create system environment file
+  ansible.builtin.copy:
+    dest: "/etc/profile.d/{{ app_name }}.sh"
+    content: |
+      export APP_NAME={{ app_name }}
+      export APP_BASE_DIR={{ app_base_dir }}
+      export APP_RELEASES_DIR={{ app_base_dir }}/releases
+      export APP_SHARED_DIR={{ app_base_dir }}/shared
+      export APP_CURRENT_LINK={{ app_base_dir }}/current
+      export APP_DEPLOY_USER={{ app_deploy_user }}
+      export PHP_BINARY={{ php_binary }}
+      export APP_ENV={{ app_env }}
+    mode: "0755"
+
+# =========================
+# OPTIONAL VALIDATION
+# =========================
+
+- name: Verify base directory exists
+  ansible.builtin.stat:
+    path: "{{ app_base_dir }}"
+  register: app_dir
+
+- name: Fail if base directory missing
+  ansible.builtin.fail:
+    msg: "Bootstrap failed: base directory not created"
+  when: not app_dir.stat.exists
