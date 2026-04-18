@@ -1,73 +1,35 @@
-# =====================================================
-# EASY GREEN — Full Deployment Playbook
-# =====================================================
-# Usage:
-#
-#   # Test on staging (u24 multipass VM)
-#   ansible-playbook -i ansible/inventory/staging.ini ansible/deploy.yml --ask-vault-pass
-#
-#   # Deploy to production
-#   ansible-playbook -i ansible/inventory/production.ini ansible/deploy.yml --ask-vault-pass
-#
-#   # Only run app deployment (after infra is set up)
-#   ansible-playbook -i ansible/inventory/staging.ini ansible/deploy.yml --ask-vault-pass --tags "deploy"
-#
-# =====================================================
 ---
-- name: Provision server infrastructure
-  hosts: all
-  become: yes
-  gather_facts: yes
-
-  vars_files:
-    - vault.yml
-
-  roles:
-    # 1. System hardening & base packages
-    - role: system
-
-    # 2. Database
-    - role: postgresql
-
-    # 3. Cache / Queue backend
-    - role: valkey
-
-    # 4. PHP runtime
-    - role: php
-
-    # 5. Reverse proxy / TLS
-    - role: caddy
-
-  tags:
-    - infra
-
 - name: Deploy Laravel application
   hosts: all
   become: yes
-  gather_facts: yes
+  gather_facts: no
+
+  vars:
+    app_local_artifact: "./release.tar.gz"
 
   vars_files:
     - vault.yml
 
   roles:
-    # 6. Laravel app deployment (code, .env, migrate, permissions)
-    - role: laravel
+    - laravel
+    - node
+    - supervisor
 
-    # 7. Node.js + Vite asset build (after code is deployed)
-    - role: node
+  tasks:
 
-    # 8. Queue workers (Supervisor)
-    - role: supervisor
+    # =========================
+    # POST DEPLOY ACTIONS
+    # =========================
 
-    # 9. Database backups (production only)
-    - role: backups
-      when: backups_enabled is defined and backups_enabled
-
-  post_tasks:
-    - name: Finalize release
+    - name: Restart queue workers
       command: "{{ php_binary }} {{ app_current_link }}/artisan queue:restart"
       args:
         chdir: "{{ app_current_link }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Clear OPcache safely
+      command: "{{ php_binary }} -r 'if (function_exists(\"opcache_reset\")) opcache_reset();'"
       changed_when: false
       failed_when: false
 

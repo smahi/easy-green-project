@@ -1,24 +1,44 @@
 ---
-# Laravel Application Deployment (Capistrano-style releases)
-- name: Set release identifier
-  set_fact:
-    release_id: "{{ ansible_date_time.iso8601_basic_short }}"
-    release_path: "{{ app_releases_dir }}/{{ ansible_date_time.iso8601_basic_short }}"
+# =========================
+# RELEASE SETUP
+# =========================
 
-- name: Create deployment directory structure
+- name: Generate release id
+  command: date +%Y%m%d%H%M%S
+  register: release_ts
+  changed_when: false
+
+- name: Set release variables
+  set_fact:
+    release_id: "{{ release_ts.stdout }}"
+    release_path: "{{ app_releases_dir }}/{{ release_ts.stdout }}"
+    artifact_path: "/tmp/{{ release_ts.stdout }}.tar.gz"
+
+- name: Create directories
   file:
     path: "{{ item }}"
     state: directory
     owner: "{{ app_deploy_user }}"
     group: www-data
-    mode: "02775"
-    recurse: yes
+    mode: "0755"
   loop:
-    - "{{ app_deploy_dir }}"
     - "{{ app_releases_dir }}"
     - "{{ app_shared_dir }}"
     - "{{ app_shared_dir }}/storage"
-    - "{{ app_shared_dir }}/bootstrap"
+
+# =========================
+# ARTIFACT UPLOAD (FROM LOCAL MACHINE)
+# =========================
+
+- name: Upload artifact to VPS
+  copy:
+    src: "{{ app_local_artifact }}"
+    dest: "{{ artifact_path }}"
+    mode: "0644"
+
+# =========================
+# EXTRACT RELEASE
+# =========================
 
 - name: Create release directory
   file:
@@ -26,39 +46,55 @@
     state: directory
     owner: "{{ app_deploy_user }}"
     group: www-data
-    mode: "02775"
 
-- name: Create shared Laravel directories
+- name: Extract artifact
+  unarchive:
+    src: "{{ artifact_path }}"
+    dest: "{{ release_path }}"
+    remote_src: yes
+    owner: "{{ app_deploy_user }}"
+    group: www-data
+
+# =========================
+# CLEAN ARTIFACT
+# =========================
+
+- name: Remove uploaded artifact
   file:
-    path: "{{ app_shared_dir }}/{{ item }}"
+    path: "{{ artifact_path }}"
+    state: absent
+
+# =========================
+# SHARED LINKS
+# =========================
+
+- name: Remove local storage directories
+  file:
+    path: "{{ release_path }}/{{ item }}"
+    state: absent
+  loop:
+    - storage
+
+- name: Link shared storage
+  file:
+    src: "{{ app_shared_dir }}/storage"
+    dest: "{{ release_path }}/storage"
+    state: link
+    force: yes
+
+- name: Ensure bootstrap/cache is writable
+  file:
+    path: "{{ release_path }}/bootstrap/cache"
     state: directory
     owner: "{{ app_deploy_user }}"
     group: www-data
-    mode: "02775"
-  loop: "{{ app_shared_directories }}"
+    mode: "0775"
 
-- name: Sync application code from local backend
-  synchronize:
-    src: "{{ app_local_source_dir }}"
-    dest: "{{ release_path }}/"
-    recursive: yes
-    rsync_opts:
-      - "--exclude=.git"
-      - "--exclude=.env"
-      - "--exclude=node_modules"
-      - "--exclude=vendor"
-      - "--exclude=storage"
-      - "--exclude=bootstrap/cache"
-      - "--delete-excluded"
+# =========================
+# ENV FILE
+# =========================
 
-- name: Ensure release tree ownership after sync
-  file:
-    path: "{{ release_path }}"
-    owner: "{{ app_deploy_user }}"
-    group: www-data
-    recurse: yes
-
-- name: Create .env file for release
+- name: Create .env
   template:
     src: env.j2
     dest: "{{ release_path }}/.env"
@@ -66,144 +102,88 @@
     group: www-data
     mode: "0640"
 
-- name: Remove release-local storage directory
-  file:
-    path: "{{ release_path }}/storage"
-    state: absent
+# =========================
+# COMPOSER (ONLY IF NOT PREBUILT)
+# =========================
 
-- name: Link shared storage directory
-  file:
-    src: "{{ app_shared_dir }}/storage"
-    dest: "{{ release_path }}/storage"
-    state: link
-    force: yes
-
-- name: Ensure bootstrap directory exists in release
-  file:
-    path: "{{ release_path }}/bootstrap"
-    state: directory
-    owner: "{{ app_deploy_user }}"
-    group: www-data
-    mode: "02775"
-
-- name: Remove release-local bootstrap cache directory
-  file:
-    path: "{{ release_path }}/bootstrap/cache"
-    state: absent
-
-- name: Link shared bootstrap/cache directory
-  file:
-    src: "{{ app_shared_dir }}/bootstrap/cache"
-    dest: "{{ release_path }}/bootstrap/cache"
-    state: link
-    force: yes
-
-- name: Install Composer dependencies (no-dev)
+- name: Install composer dependencies (optional fallback)
   become_user: "{{ app_deploy_user }}"
-  command: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+  command: composer install --no-dev --optimize-autoloader --no-interaction
   args:
     chdir: "{{ release_path }}"
-  environment:
-    COMPOSER_HOME: "/home/{{ app_deploy_user }}/.composer"
+  when: composer_not_built_in_ci | default(false)
 
-- name: Build shared storage symlink
-  command: "{{ php_binary }} artisan storage:link"
+
+# =========================
+# VALIDATE ARTIFACT
+# =========================
+
+- name: Ensure vendor exists from artifact
+  stat:
+    path: "{{ release_path }}/vendor/autoload.php"
+  register: vendor_check
+
+- name: Fail if vendor missing
+  fail:
+    msg: "Artifact is invalid: vendor not present. Build pipeline broken."
+  when: not vendor_check.stat.exists
+
+# =========================
+# LARAVEL MIGRATIONS
+# =========================
+
+- name: Validate artifact integrity
+  stat:
+    path: "{{ release_path }}/vendor/autoload.php"
+  register: vendor_check
+
+- name: Clear Laravel configuration cache
+  command: "{{ php_binary }} artisan config:clear"
   args:
     chdir: "{{ release_path }}"
   changed_when: false
   failed_when: false
 
-- name: Run pre-migration Laravel commands
+- name: Run migrations
+  command: "{{ php_binary }} artisan migrate --force --no-interaction"
+  args:
+    chdir: "{{ release_path }}"
+  environment:
+    APP_ENV: "{{ env }}"
+  register: migrate_result
+  retries: 2
+  delay: 5
+  until: migrate_result.rc == 0
+
+# =========================
+# OPTIMIZATION
+# =========================
+
+- name: Optimize Laravel
   command: "{{ php_binary }} artisan {{ item }}"
   args:
     chdir: "{{ release_path }}"
-  environment:
-    APP_ENV: "{{ env }}"
   loop:
-    - config:clear
-    - filament:upgrade
-  changed_when: false
-
-- name: Run database migrations
-  command: "{{ php_binary }} artisan migrate --force"
-  args:
-    chdir: "{{ release_path }}"
-  environment:
-    APP_ENV: "{{ env }}"
-
-- name: Run required application seeders
-  command: "{{ php_binary }} artisan db:seed --class={{ item }} --force"
-  args:
-    chdir: "{{ release_path }}"
-  environment:
-    APP_ENV: "{{ env }}"
-  loop: "{{ laravel_seeders }}"
-  changed_when: false
-
-- name: Generate Shield permissions for admin panel
-  command: "{{ php_binary }} artisan shield:generate --all --option=permissions --panel=admin"
-  args:
-    chdir: "{{ release_path }}"
-  environment:
-    APP_ENV: "{{ env }}"
-  changed_when: false
-
-- name: Check whether superuser already exists
-  command:
-    argv:
-      - "{{ php_binary }}"
-      - -r
-      - |
-        require 'vendor/autoload.php';
-        $app = require 'bootstrap/app.php';
-        $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-        $kernel->bootstrap();
-        echo App\Models\User::where('email', getenv('SUPERUSER_EMAIL'))->exists() ? '1' : '0';
-  args:
-    chdir: "{{ release_path }}"
-  environment:
-    APP_ENV: "{{ env }}"
-    SUPERUSER_EMAIL: "{{ app_superuser_email }}"
-  register: superuser_exists
-  changed_when: false
-
-- name: Create initial superuser
-  command: >-
-    {{ php_binary }} artisan user:create-superuser
-    --name="{{ app_superuser_name }}"
-    --email="{{ app_superuser_email }}"
-    --password="{{ app_superuser_password }}"
-  args:
-    chdir: "{{ release_path }}"
-  environment:
-    APP_ENV: "{{ env }}"
-  when: superuser_exists.stdout | trim != '1'
-  no_log: true
-
-- name: Run post-migration Laravel optimization commands
-  command: "{{ php_binary }} artisan {{ item }}"
-  args:
-    chdir: "{{ release_path }}"
-  environment:
-    APP_ENV: "{{ env }}"
-  loop:
-    - cache:clear
     - config:cache
     - route:cache
     - view:cache
     - event:cache
   changed_when: false
 
-- name: Set writable permissions on shared storage paths
-  file:
-    path: "{{ app_shared_dir }}/{{ item }}"
-    owner: "{{ app_deploy_user }}"
-    group: www-data
-    mode: "02775"
-    recurse: yes
-  loop:
-    - storage
-    - bootstrap/cache
+# =========================
+# STORAGE LINK
+# =========================
+
+- name: Create storage link
+  command: "{{ php_binary }} artisan storage:link"
+  args:
+    chdir: "{{ release_path }}"
+  changed_when: false
+  failed_when: false
+
+# =========================
+# SWITCH RELEASE (ZERO DOWNTIME)
+# =========================
 
 - name: Update current symlink
   file:
@@ -212,5 +192,11 @@
     state: link
     force: yes
 
-- name: Clean old releases (keep last 5)
-  shell: "ls -1dt {{ app_releases_dir }}/* | tail -n +{{ app_release_keep + 1 }} | xargs -r rm -rf"
+# =========================
+# CLEAN OLD RELEASES
+# =========================
+
+- name: Remove old releases
+  shell: |
+    ls -1dt {{ app_releases_dir }}/* | tail -n +{{ app_release_keep + 1 }} | xargs -r rm -rf
+  changed_when: false
