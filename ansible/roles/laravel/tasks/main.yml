@@ -155,6 +155,55 @@
   delay: 5
   until: migrate_result.rc == 0
 
+- name: Run required application seeders
+  command: "{{ php_binary }} artisan db:seed --class={{ item }} --force"
+  args:
+    chdir: "{{ release_path }}"
+  environment:
+    APP_ENV: "{{ env }}"
+  loop: "{{ laravel_seeders }}"
+  changed_when: false
+
+- name: Generate Shield permissions for admin panel
+  command: "{{ php_binary }} artisan shield:generate --all --option=permissions --panel=admin"
+  args:
+    chdir: "{{ release_path }}"
+  environment:
+    APP_ENV: "{{ env }}"
+  changed_when: false
+
+- name: Check whether superuser already exists
+  command:
+    argv:
+      - "{{ php_binary }}"
+      - -r
+      - |
+        require 'vendor/autoload.php';
+        $app = require 'bootstrap/app.php';
+        $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+        $kernel->bootstrap();
+        echo App\Models\User::where('email', getenv('SUPERUSER_EMAIL'))->exists() ? '1' : '0';
+  args:
+    chdir: "{{ release_path }}"
+  environment:
+    APP_ENV: "{{ env }}"
+    SUPERUSER_EMAIL: "{{ app_superuser_email }}"
+  register: superuser_exists
+  changed_when: false
+
+- name: Create initial superuser
+  command: >-
+    {{ php_binary }} artisan user:create-superuser
+    --name="{{ app_superuser_name }}"
+    --email="{{ app_superuser_email }}"
+    --password="{{ app_superuser_password }}"
+  args:
+    chdir: "{{ release_path }}"
+  environment:
+    APP_ENV: "{{ env }}"
+  when: superuser_exists.stdout | trim != '1'
+  no_log: true
+
 # =========================
 # OPTIMIZATION
 # =========================
