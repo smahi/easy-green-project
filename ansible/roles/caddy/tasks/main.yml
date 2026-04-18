@@ -7,6 +7,31 @@
     state: present
   notify: Restart caddy
 
+- name: Check what is using port 80
+  ansible.builtin.shell: ss -tulpn | grep ':80 ' || true
+  register: port80_check
+  changed_when: false
+
+- name: Show port 80 usage
+  ansible.builtin.debug:
+    var: port80_check.stdout_lines
+
+- name: Stop common web servers
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  loop:
+    - nginx
+    - apache2
+  ignore_errors: true
+
+- name: Kill processes using port 80
+  ansible.builtin.shell: |
+    fuser -k 80/tcp || true
+  changed_when: false
+
+
 - name: Start and enable Caddy
   service:
     name: caddy
