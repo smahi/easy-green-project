@@ -267,21 +267,51 @@
         - { name: net.ipv4.ip_unprivileged_port_start,        value: "80" }
 
     # ── 7. Filesystem hardening ───────────────────────────────────────────────
-    - name: Harden /tmp mount options
-      ansible.posix.mount:
-        path: /tmp
-        src: tmpfs
-        fstype: tmpfs
-        opts: "defaults,noexec,nosuid,nodev,size=512m"
-        state: mounted
+    # Ubuntu 22.04+ manages /tmp via systemd-tmpfiles — using ansible.posix.mount
+    # on an already-active tmpfs causes deserialization errors. The correct approach
+    # is a systemd drop-in that overrides the mount options.
 
-    - name: Harden /dev/shm
-      ansible.posix.mount:
-        path: /dev/shm
-        src: tmpfs
-        fstype: tmpfs
-        opts: "defaults,noexec,nosuid,nodev"
-        state: mounted
+    - name: Create systemd drop-in directory for tmp.mount
+      ansible.builtin.file:
+        path: /etc/systemd/system/tmp.mount.d
+        state: directory
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Harden /tmp via systemd drop-in (noexec, nosuid, nodev)
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/tmp.mount.d/hardening.conf
+        mode: "0644"
+        owner: root
+        group: root
+        content: |
+          [Mount]
+          Options=mode=1777,strictatime,nosuid,nodev,noexec,size=512M
+      register: tmp_mount_dropin
+
+    - name: Reload systemd and remount /tmp
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: tmp_mount_dropin.changed
+
+    - name: Remount /tmp to apply new options
+      ansible.builtin.command: mount -o remount /tmp
+      when: tmp_mount_dropin.changed
+      changed_when: true
+
+    - name: Harden /dev/shm via fstab entry
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^tmpfs\s+/dev/shm'
+        line: "tmpfs /dev/shm tmpfs defaults,noexec,nosuid,nodev 0 0"
+        state: present
+      register: shm_fstab
+
+    - name: Remount /dev/shm to apply new options
+      ansible.builtin.command: mount -o remount /dev/shm
+      when: shm_fstab.changed
+      changed_when: true
 
     # ── 8. Automatic security updates ─────────────────────────────────────────
     - name: Configure unattended-upgrades
