@@ -1,0 +1,139 @@
+---
+# ansible/deploy-compose.yml
+#
+# Deploys the Laravel 12 / Filament 5 backend to the Multipass staging VM.
+#
+# Usage:
+#   ansible-playbook ansible/deploy-compose.yml -i ansible/inventory/staging.ini
+#   ansible-playbook ansible/deploy-compose.yml -i ansible/inventory/staging.ini --tags build
+#   ansible-playbook ansible/deploy-compose.yml -i ansible/inventory/staging.ini --tags restart
+#
+# Prerequisites on the VM (run ansible/bootstrap-compose.yml first if needed):
+#   - Podman + podman-compose installed
+#   - Port 80 unprivileged binding enabled
+#   - Project directory exists at {{ deploy_dir }}
+
+- name: Deploy Laravel backend (Podman Compose)
+  hosts: staging
+  become: false          # everything runs as the ubuntu user, no sudo needed for Podman
+
+  vars:
+    # ── paths ────────────────────────────────────────────────────────────────
+    project_root: "{{ ansible_env.HOME }}/easy-green-project"
+    deploy_dir:   "{{ project_root }}/backend"
+
+    # ── image ─────────────────────────────────────────────────────────────────
+    app_image: "myapp_app:latest"
+
+    # ── compose containers to restart on deploy ────────────────────────────
+    app_containers:
+      - myapp_app_1
+      - myapp_queue_1
+      - myapp_scheduler_1
+
+  tasks:
+
+    # ── 1. sync code ──────────────────────────────────────────────────────────
+    - name: Ensure project directory exists
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Sync backend source to VM
+      ansible.posix.synchronize:
+        src: "{{ playbook_dir }}/../backend/"
+        dest: "{{ deploy_dir }}/"
+        delete: true
+        recursive: true
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=node_modules"
+          - "--exclude=vendor"
+          - "--exclude=.env"
+          - "--exclude=public/build"
+          - "--exclude=storage/logs/*"
+          - "--exclude=storage/framework/cache/*"
+          - "--exclude=storage/framework/sessions/*"
+          - "--exclude=storage/framework/views/*"
+          - "--exclude=bootstrap/cache/*.php"
+      tags: [sync, build]
+
+    # ── 2. environment file ───────────────────────────────────────────────────
+    - name: Copy .env to VM (only if it does not already exist)
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../backend/.env"
+        dest: "{{ deploy_dir }}/.env"
+        mode: "0600"
+        force: false        # never overwrite an existing .env on the server
+      tags: [sync]
+
+    # ── 3. build the app image ────────────────────────────────────────────────
+    - name: Build app image
+      ansible.builtin.command:
+        cmd: >
+          podman build
+          --file docker/app.Dockerfile
+          --tag {{ app_image }}
+          .
+        chdir: "{{ deploy_dir }}"
+      register: build_result
+      changed_when: "'Successfully tagged' in build_result.stdout or build_result.rc == 0"
+      tags: [build]
+
+    # ── 4. start infrastructure (db + valkey) if not already running ──────────
+    - name: Ensure db and valkey are up
+      ansible.builtin.command:
+        cmd: podman-compose up -d db valkey
+        chdir: "{{ deploy_dir }}"
+      tags: [deploy]
+
+    - name: Wait for PostgreSQL to be healthy
+      ansible.builtin.command:
+        cmd: >
+          podman exec myapp_db_1
+          pg_isready -U {{ lookup('env', 'DB_USERNAME') | default('myapp') }}
+      register: pg_ready
+      retries: 15
+      delay: 3
+      until: pg_ready.rc == 0
+      tags: [deploy]
+
+    # ── 5. replace app containers with freshly built image ────────────────────
+    - name: Remove old app containers
+      ansible.builtin.command:
+        cmd: "podman rm -f {{ item }}"
+        chdir: "{{ deploy_dir }}"
+      loop: "{{ app_containers }}"
+      ignore_errors: true   # container may not exist on first run
+      tags: [deploy, restart]
+
+    - name: Start app, queue and scheduler
+      ansible.builtin.command:
+        cmd: podman-compose up -d app queue scheduler
+        chdir: "{{ deploy_dir }}"
+      tags: [deploy, restart]
+
+    # ── 6. ensure caddy is up ─────────────────────────────────────────────────
+    - name: Ensure caddy is up
+      ansible.builtin.command:
+        cmd: podman-compose up -d caddy
+        chdir: "{{ deploy_dir }}"
+      tags: [deploy]
+
+    # ── 7. smoke test ─────────────────────────────────────────────────────────
+    - name: Wait for app to respond on port 80
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}"
+        status_code: [200, 302, 301]
+        timeout: 30
+      register: smoke
+      retries: 10
+      delay: 5
+      until: smoke.status in [200, 302, 301]
+      tags: [deploy, smoke]
+
+    - name: Deployment complete
+      ansible.builtin.debug:
+        msg: "✓ App is live at http://{{ ansible_host }}  (HTTP {{ smoke.status }})"
+      tags: [deploy, smoke]

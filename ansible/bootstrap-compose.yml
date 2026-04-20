@@ -1,0 +1,89 @@
+---
+# ansible/bootstrap-compose.yml
+#
+# One-time setup of the Multipass VM before the first deploy.
+# Run this once, then use deploy-compose.yml for all subsequent deploys.
+#
+# Usage:
+#   ansible-playbook ansible/bootstrap-compose.yml -i ansible/inventory/staging.ini
+
+- name: Bootstrap VM for Podman Compose deployment
+  hosts: staging
+  become: true             # needs sudo for sysctl + apt
+
+  vars:
+    deploy_user: ubuntu
+    project_root: "/home/{{ deploy_user }}/easy-green-project"
+    deploy_dir:   "{{ project_root }}/backend"
+    containers_conf_dir: "/home/{{ deploy_user }}/.config/containers"
+
+  tasks:
+
+    # ── 1. system packages ────────────────────────────────────────────────────
+    - name: Install Podman and Podman Compose
+      ansible.builtin.apt:
+        name:
+          - podman
+          - podman-compose
+        state: present
+        update_cache: true
+
+    # ── 2. allow binding to port 80 (rootless) ────────────────────────────────
+    - name: Allow unprivileged port binding from port 80
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_unprivileged_port_start
+        value: "80"
+        state: present
+        sysctl_file: /etc/sysctl.d/99-podman-ports.conf
+        reload: true
+
+    # ── 3. fix DNS inside build containers ────────────────────────────────────
+    - name: Ensure containers config directory exists
+      ansible.builtin.file:
+        path: "{{ containers_conf_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Write containers.conf with reliable DNS
+      ansible.builtin.copy:
+        dest: "{{ containers_conf_dir }}/containers.conf"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+        content: |
+          [containers]
+          dns = ["1.1.1.1", "8.8.8.8"]
+
+    # ── 4. create project directory ───────────────────────────────────────────
+    - name: Create project and backend directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+      loop:
+        - "{{ project_root }}"
+        - "{{ deploy_dir }}"
+        - "{{ deploy_dir }}/backups"
+
+    # ── 5. enable Podman socket for the deploy user ───────────────────────────
+    - name: Enable Podman socket (user service)
+      ansible.builtin.systemd:
+        name: podman.socket
+        enabled: true
+        state: started
+        scope: user
+      become: true
+      become_user: "{{ deploy_user }}"
+
+    - name: Allow user services to run without login (linger)
+      ansible.builtin.command:
+        cmd: "loginctl enable-linger {{ deploy_user }}"
+      changed_when: false
+
+    - name: Bootstrap complete
+      ansible.builtin.debug:
+        msg: "VM is ready. Run deploy-compose.yml to deploy the app."

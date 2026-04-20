@@ -1,0 +1,508 @@
+---
+# ansible/harden.yml
+#
+# One-time VPS security hardening. Run this BEFORE bootstrap-compose.yml
+# on any fresh server (Multipass staging or production VPS).
+#
+# Usage:
+#   ansible-playbook ansible/harden.yml -i ansible/inventory/staging.ini
+#
+# What it does (in order):
+#   1.  System update
+#   2.  Swap useless default packages for hardened alternatives
+#   3.  SSH hardening
+#   4.  Firewall (UFW)
+#   5.  Fail2ban (brute-force protection)
+#   6.  Kernel / sysctl hardening
+#   7.  Filesystem hardening (/tmp noexec, shared memory restrictions)
+#   8.  Automatic security updates (unattended-upgrades)
+#   9.  Auditd (system call auditing)
+#   10. Disable unused kernel modules
+#   11. Restrict cron to root only
+#   12. Password / PAM policy
+#   13. Rootkit scanner (rkhunter)
+#   14. Login banner
+#
+# ⚠  Run as a user with sudo. The playbook does NOT disable your current
+#    SSH key or lock you out — read the SSH vars below before running.
+
+- name: Harden VPS security
+  hosts: staging
+  become: true
+
+  vars:
+    # ── SSH ───────────────────────────────────────────────────────────────────
+    ssh_port: 22                  # change to e.g. 2222 to move SSH off default port
+    ssh_allowed_users:
+      - ubuntu                   # add any other users that must SSH in
+    ssh_pubkey_only: true        # set false only if you still need password login
+
+    # ── Firewall ──────────────────────────────────────────────────────────────
+    ufw_allowed_ports:
+      - { port: "{{ ssh_port }}", proto: tcp, comment: SSH }
+      - { port: "80",  proto: tcp, comment: HTTP  }
+      - { port: "443", proto: tcp, comment: HTTPS }
+      - { port: "443", proto: udp, comment: "HTTPS / HTTP3" }
+
+    # ── Fail2ban ──────────────────────────────────────────────────────────────
+    fail2ban_ssh_maxretry: 5
+    fail2ban_ssh_bantime:  3600   # seconds (1 hour)
+    fail2ban_ssh_findtime:  600   # seconds (10 min window)
+
+    # ── Automatic updates ─────────────────────────────────────────────────────
+    unattended_upgrades_email: ""  # set to your email to get update reports
+
+  handlers:
+    - name: restart ssh
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
+
+    - name: restart fail2ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: restarted
+
+    - name: reload sysctl
+      ansible.builtin.command: sysctl --system
+
+  tasks:
+
+    # ── 1. Full system update ─────────────────────────────────────────────────
+    - name: Update apt cache and upgrade all packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: full
+        autoremove: true
+        autoclean: true
+
+    # ── 2. Install hardening tools, remove unnecessary packages ───────────────
+    - name: Install security packages
+      ansible.builtin.apt:
+        name:
+          - ufw
+          - fail2ban
+          - unattended-upgrades
+          - apt-listchanges
+          - auditd
+          - audispd-plugins
+          - rkhunter
+          - libpam-pwquality
+          - acl
+          - rsyslog
+        state: present
+
+    - name: Remove unnecessary / risky packages
+      ansible.builtin.apt:
+        name:
+          - telnet
+          - rsh-client
+          - rsh-redone-client
+          - talk
+          - ntalk
+          - xinetd
+          - nis
+        state: absent
+        purge: true
+
+    # ── 3. SSH hardening ──────────────────────────────────────────────────────
+    - name: Configure sshd
+      ansible.builtin.blockinfile:
+        path: /etc/ssh/sshd_config
+        marker: "# {mark} ANSIBLE MANAGED — harden.yml"
+        block: |
+          Port {{ ssh_port }}
+
+          # Authentication
+          PermitRootLogin no
+          PasswordAuthentication {{ 'no' if ssh_pubkey_only else 'yes' }}
+          PubkeyAuthentication yes
+          AuthenticationMethods publickey
+          PermitEmptyPasswords no
+          ChallengeResponseAuthentication no
+          KerberosAuthentication no
+          GSSAPIAuthentication no
+          UsePAM yes
+
+          # Restrict who can log in
+          AllowUsers {{ ssh_allowed_users | join(' ') }}
+
+          # Harden ciphers / MACs / KEX
+          Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+          MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+          KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512
+
+          # Sessions
+          LoginGraceTime 30
+          MaxAuthTries 3
+          MaxSessions 5
+          ClientAliveInterval 300
+          ClientAliveCountMax 2
+
+          # Disable risky features
+          X11Forwarding no
+          AllowAgentForwarding no
+          AllowTcpForwarding no
+          PermitTunnel no
+          PrintMotd no
+          AcceptEnv LANG LC_*
+
+          # Log level
+          LogLevel VERBOSE
+      notify: restart ssh
+
+    - name: Ensure SSH host keys have correct permissions
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: "0600"
+        owner: root
+        group: root
+      loop:
+        - /etc/ssh/ssh_host_rsa_key
+        - /etc/ssh/ssh_host_ecdsa_key
+        - /etc/ssh/ssh_host_ed25519_key
+      failed_when: false   # key may not exist if algorithm is disabled
+
+    # ── 4. Firewall (UFW) ─────────────────────────────────────────────────────
+    - name: Reset UFW to defaults
+      community.general.ufw:
+        state: reset
+
+    - name: Set UFW default policies
+      community.general.ufw:
+        direction: "{{ item.direction }}"
+        policy: "{{ item.policy }}"
+      loop:
+        - { direction: incoming, policy: deny  }
+        - { direction: outgoing, policy: allow }
+        - { direction: routed,   policy: deny  }
+
+    - name: Allow required ports
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        comment: "{{ item.comment }}"
+      loop: "{{ ufw_allowed_ports }}"
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+        logging: "on"
+
+    # ── 5. Fail2ban ───────────────────────────────────────────────────────────
+    - name: Write fail2ban jail.local
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/jail.local
+        mode: "0644"
+        content: |
+          [DEFAULT]
+          bantime  = {{ fail2ban_ssh_bantime }}
+          findtime = {{ fail2ban_ssh_findtime }}
+          maxretry = {{ fail2ban_ssh_maxretry }}
+          backend  = systemd
+          banaction = ufw
+
+          [sshd]
+          enabled  = true
+          port     = {{ ssh_port }}
+          logpath  = %(sshd_log)s
+      notify: restart fail2ban
+
+    - name: Enable and start fail2ban
+      ansible.builtin.service:
+        name: fail2ban
+        enabled: true
+        state: started
+
+    # ── 6. Kernel / sysctl hardening ──────────────────────────────────────────
+    - name: Apply sysctl hardening
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        sysctl_file: /etc/sysctl.d/99-hardening.conf
+        reload: true
+      loop:
+        # ── Network: disable IP source routing and redirects ──
+        - { name: net.ipv4.conf.all.accept_source_route,      value: "0" }
+        - { name: net.ipv4.conf.default.accept_source_route,  value: "0" }
+        - { name: net.ipv4.conf.all.accept_redirects,         value: "0" }
+        - { name: net.ipv4.conf.default.accept_redirects,     value: "0" }
+        - { name: net.ipv4.conf.all.secure_redirects,         value: "0" }
+        - { name: net.ipv4.conf.default.secure_redirects,     value: "0" }
+        - { name: net.ipv4.conf.all.send_redirects,           value: "0" }
+        - { name: net.ipv4.conf.default.send_redirects,       value: "0" }
+        - { name: net.ipv6.conf.all.accept_redirects,         value: "0" }
+        - { name: net.ipv6.conf.default.accept_redirects,     value: "0" }
+        # ── Network: SYN flood protection ──
+        - { name: net.ipv4.tcp_syncookies,                    value: "1" }
+        - { name: net.ipv4.tcp_syn_retries,                   value: "2" }
+        - { name: net.ipv4.tcp_synack_retries,                value: "2" }
+        - { name: net.ipv4.tcp_max_syn_backlog,               value: "4096" }
+        # ── Network: misc hardening ──
+        - { name: net.ipv4.conf.all.rp_filter,                value: "1" }
+        - { name: net.ipv4.conf.default.rp_filter,            value: "1" }
+        - { name: net.ipv4.icmp_echo_ignore_broadcasts,       value: "1" }
+        - { name: net.ipv4.icmp_ignore_bogus_error_responses, value: "1" }
+        - { name: net.ipv4.conf.all.log_martians,             value: "1" }
+        - { name: net.ipv4.conf.default.log_martians,         value: "1" }
+        - { name: net.ipv6.conf.all.disable_ipv6,             value: "0" }  # keep ipv6, but harden it
+        - { name: net.ipv6.conf.all.accept_ra,                value: "0" }
+        - { name: net.ipv6.conf.default.accept_ra,            value: "0" }
+        # ── Kernel: restrict ptrace, dmesg, kptr ──
+        - { name: kernel.yama.ptrace_scope,                   value: "1" }
+        - { name: kernel.dmesg_restrict,                      value: "1" }
+        - { name: kernel.kptr_restrict,                       value: "2" }
+        - { name: kernel.randomize_va_space,                  value: "2" }  # full ASLR
+        - { name: kernel.sysrq,                               value: "0" }
+        - { name: kernel.core_uses_pid,                       value: "1" }
+        - { name: kernel.panic,                               value: "10" } # reboot 10s after panic
+        - { name: kernel.panic_on_oops,                       value: "1" }
+        # ── Filesystem ──
+        - { name: fs.suid_dumpable,                           value: "0" }  # no SUID core dumps
+        - { name: fs.protected_hardlinks,                     value: "1" }
+        - { name: fs.protected_symlinks,                      value: "1" }
+        # ── Podman rootless port (must stay) ──
+        - { name: net.ipv4.ip_unprivileged_port_start,        value: "80" }
+
+    # ── 7. Filesystem hardening ───────────────────────────────────────────────
+    - name: Harden /tmp mount options
+      ansible.posix.mount:
+        path: /tmp
+        src: tmpfs
+        fstype: tmpfs
+        opts: "defaults,noexec,nosuid,nodev,size=512m"
+        state: mounted
+
+    - name: Harden /dev/shm
+      ansible.posix.mount:
+        path: /dev/shm
+        src: tmpfs
+        fstype: tmpfs
+        opts: "defaults,noexec,nosuid,nodev"
+        state: mounted
+
+    # ── 8. Automatic security updates ─────────────────────────────────────────
+    - name: Configure unattended-upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/50unattended-upgrades
+        mode: "0644"
+        content: |
+          Unattended-Upgrade::Allowed-Origins {
+              "${distro_id}:${distro_codename}-security";
+              "${distro_id}ESMApps:${distro_codename}-apps-security";
+              "${distro_id}ESM:${distro_codename}-infra-security";
+          };
+          Unattended-Upgrade::Package-Blacklist {};
+          Unattended-Upgrade::DevRelease "false";
+          Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+          Unattended-Upgrade::MinimalSteps "true";
+          Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+          Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+          Unattended-Upgrade::Automatic-Reboot "false";
+          {% if unattended_upgrades_email != "" %}
+          Unattended-Upgrade::Mail "{{ unattended_upgrades_email }}";
+          Unattended-Upgrade::MailReport "on-change";
+          {% endif %}
+
+    - name: Enable unattended-upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Download-Upgradeable-Packages "1";
+          APT::Periodic::AutocleanInterval "7";
+          APT::Periodic::Unattended-Upgrade "1";
+
+    # ── 9. Auditd rules ───────────────────────────────────────────────────────
+    - name: Write auditd rules
+      ansible.builtin.copy:
+        dest: /etc/audit/rules.d/hardening.rules
+        mode: "0640"
+        content: |
+          # Delete all existing rules
+          -D
+
+          # Buffer size
+          -b 8192
+
+          # Failure mode: 1 = print, 2 = panic
+          -f 1
+
+          # Watch for changes to auth-related files
+          -w /etc/passwd      -p wa -k identity
+          -w /etc/shadow      -p wa -k identity
+          -w /etc/group       -p wa -k identity
+          -w /etc/gshadow     -p wa -k identity
+          -w /etc/sudoers     -p wa -k sudoers
+          -w /etc/sudoers.d/  -p wa -k sudoers
+
+          # SSH config changes
+          -w /etc/ssh/sshd_config -p wa -k sshd
+
+          # Login / logout events
+          -w /var/log/faillog  -p wa -k logins
+          -w /var/log/lastlog  -p wa -k logins
+          -w /var/run/utmp     -p wa -k session
+          -w /var/log/wtmp     -p wa -k session
+          -w /var/log/btmp     -p wa -k session
+
+          # Privileged commands
+          -a always,exit -F path=/usr/bin/sudo  -F perm=x -F auid>=1000 -F auid!=-1 -k sudo
+          -a always,exit -F path=/usr/bin/su    -F perm=x -F auid>=1000 -F auid!=-1 -k su
+
+          # Network config changes
+          -a always,exit -F arch=b64 -S sethostname -S setdomainname -k network_modifications
+          -w /etc/hosts      -p wa -k network_modifications
+          -w /etc/network/   -p wa -k network_modifications
+
+          # Module loading
+          -w /sbin/insmod  -p x -k modules
+          -w /sbin/rmmod   -p x -k modules
+          -w /sbin/modprobe -p x -k modules
+          -a always,exit -F arch=b64 -S init_module -S delete_module -k modules
+
+          # Make rules immutable (reboot required to change after this)
+          # Uncomment in production when rules are finalised:
+          # -e 2
+
+    - name: Enable and restart auditd
+      ansible.builtin.service:
+        name: auditd
+        enabled: true
+        state: restarted
+
+    # ── 10. Disable unused / dangerous kernel modules ─────────────────────────
+    - name: Blacklist unnecessary kernel modules
+      ansible.builtin.copy:
+        dest: /etc/modprobe.d/hardening-blacklist.conf
+        mode: "0644"
+        content: |
+          # Uncommon network protocols — rarely needed, attack surface
+          install dccp    /bin/true
+          install sctp    /bin/true
+          install rds     /bin/true
+          install tipc    /bin/true
+          install n-hdlc  /bin/true
+          install ax25    /bin/true
+          install netrom  /bin/true
+          install x25     /bin/true
+          install rose    /bin/true
+          install decnet  /bin/true
+          install econet  /bin/true
+          install af_802154 /bin/true
+          install ipx     /bin/true
+          install appletalk /bin/true
+          install psnap   /bin/true
+          install p8023   /bin/true
+          install llc     /bin/true
+          install p8022   /bin/true
+
+          # Firewire (not needed on a VPS)
+          install firewire-core /bin/true
+          install firewire-ohci /bin/true
+
+          # USB storage (not needed on a VPS)
+          install usb-storage /bin/true
+
+    # ── 11. Restrict cron ─────────────────────────────────────────────────────
+    - name: Restrict cron to root only
+      ansible.builtin.copy:
+        dest: /etc/cron.allow
+        content: "root\n"
+        mode: "0600"
+        owner: root
+        group: root
+
+    - name: Remove cron.deny (cron.allow takes precedence)
+      ansible.builtin.file:
+        path: /etc/cron.deny
+        state: absent
+
+    # ── 12. PAM / password policy ─────────────────────────────────────────────
+    - name: Set password quality requirements
+      ansible.builtin.lineinfile:
+        path: /etc/security/pwquality.conf
+        regexp: "^#?{{ item.key }}"
+        line: "{{ item.key }} = {{ item.value }}"
+      loop:
+        - { key: minlen,    value: "14" }
+        - { key: dcredit,   value: "-1" }   # at least 1 digit
+        - { key: ucredit,   value: "-1" }   # at least 1 uppercase
+        - { key: lcredit,   value: "-1" }   # at least 1 lowercase
+        - { key: ocredit,   value: "-1" }   # at least 1 special char
+        - { key: maxrepeat, value: "3"  }   # no more than 3 consecutive same chars
+
+    - name: Set login.defs hardening
+      ansible.builtin.lineinfile:
+        path: /etc/login.defs
+        regexp: "^{{ item.key }}"
+        line: "{{ item.key }} {{ item.value }}"
+      loop:
+        - { key: PASS_MAX_DAYS, value: "90"  }
+        - { key: PASS_MIN_DAYS, value: "1"   }
+        - { key: PASS_WARN_AGE, value: "14"  }
+        - { key: LOGIN_RETRIES, value: "3"   }
+        - { key: LOGIN_TIMEOUT, value: "30"  }
+        - { key: UMASK,         value: "027" }
+
+    # ── 13. Rkhunter (rootkit scanner) ────────────────────────────────────────
+    - name: Update rkhunter database
+      ansible.builtin.command: rkhunter --update --nocolors
+      changed_when: false
+      failed_when: false
+
+    - name: Set rkhunter baseline (propupd)
+      ansible.builtin.command: rkhunter --propupd --nocolors
+      changed_when: false
+
+    - name: Schedule weekly rkhunter scan via cron
+      ansible.builtin.cron:
+        name: rkhunter weekly scan
+        weekday: "0"
+        hour: "4"
+        minute: "0"
+        user: root
+        job: "/usr/bin/rkhunter --check --skip-keypress --report-warnings-only --nocolors 2>&1 | /usr/bin/logger -t rkhunter"
+
+    # ── 14. Login banner (legal notice) ───────────────────────────────────────
+    - name: Write /etc/issue.net banner
+      ansible.builtin.copy:
+        dest: /etc/issue.net
+        mode: "0644"
+        content: |
+          ************************************************************************
+          *  Authorised access only. All activity is monitored and logged.       *
+          *  Unauthorised access is prohibited and may result in prosecution.    *
+          ************************************************************************
+
+    - name: Enable SSH banner
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?Banner"
+        line: "Banner /etc/issue.net"
+      notify: restart ssh
+
+    - name: Clear /etc/motd
+      ansible.builtin.copy:
+        dest: /etc/motd
+        content: ""
+        mode: "0644"
+
+    # ── Done ──────────────────────────────────────────────────────────────────
+    - name: Hardening complete
+      ansible.builtin.debug:
+        msg: |
+          ✓ Hardening applied. Summary:
+            - SSH:               port {{ ssh_port }}, pubkey only, root login disabled
+            - Firewall (UFW):    allows ports {{ ufw_allowed_ports | map(attribute='port') | join(', ') }}
+            - Fail2ban:          SSH jail active (max {{ fail2ban_ssh_maxretry }} retries)
+            - Sysctl:            network + kernel hardening applied
+            - Auto-updates:      security patches install automatically
+            - Auditd:            syscall auditing active
+            - Kernel modules:    unused protocols blacklisted
+            - PAM:               password policy enforced (min 14 chars)
+            - Rkhunter:          baseline set, weekly scan scheduled
+          ⚠  Reboot recommended to apply all kernel/module changes.
