@@ -1,0 +1,42 @@
+# ── .dockerignore ─────────────────────────────────────────────────────────────
+
+# Node
+node_modules
+npm-debug.log*
+
+# Composer / PHP
+vendor
+
+# Laravel runtime / generated files
+bootstrap/cache/*.php
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/public
+
+# Built assets (rebuilt inside the container)
+public/build
+public/hot
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Deployment files not needed inside the image
+compose.yaml
+deploy.sh
+*.md
+caddy/
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# IDE / OS noise
+.idea
+.vscode
+*.DS_Store
+Thumbs.db

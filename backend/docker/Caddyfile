@@ -1,0 +1,36 @@
+# FrankenPHP application server Caddyfile
+# This runs INSIDE the app container on port 8080.
+# Caddy (the proxy container) forwards traffic here.
+
+{
+    frankenphp
+    # Disable the admin API inside the app container
+    admin off
+}
+
+:8080 {
+    root * /var/www/html/public
+
+    # Encode responses
+    encode zstd br gzip
+
+    # PHP via FrankenPHP worker mode for best performance
+    php_server {
+        # Worker mode: keep a pool of long-lived PHP workers
+        # Tune worker count to (CPU cores × 2) or measure under load
+        resolve_root_symlink
+    }
+
+    # Deny access to dotfiles and sensitive paths
+    @dotfiles path /.*
+    respond @dotfiles 404
+
+    @sensitive path /storage/logs/* /bootstrap/cache/*
+    respond @sensitive 403
+
+    log {
+        output stderr
+        format console
+        level  INFO
+    }
+}
