@@ -20,11 +20,12 @@
   tasks:
 
     # ── 1. system packages ────────────────────────────────────────────────────
-    - name: Install Podman and Podman Compose
+    - name: Install Podman and Podman Compose and rsync
       ansible.builtin.apt:
         name:
           - podman
           - podman-compose
+          - rsync
         state: present
         update_cache: true
 
@@ -38,7 +39,7 @@
         reload: true
 
     # ── 3. fix DNS inside build containers ────────────────────────────────────
-    - name: Ensure containers config directory exists
+    - name: Ensure user containers config directory exists
       ansible.builtin.file:
         path: "{{ containers_conf_dir }}"
         state: directory
@@ -56,7 +57,38 @@
           [containers]
           dns = ["1.1.1.1", "8.8.8.8"]
 
-    # ── 4. create project directory ───────────────────────────────────────────
+    # ── 4. configure unqualified image search registries ─────────────────────
+    # Without this, Podman refuses short image names (e.g. "composer:2",
+    # "node:22-alpine") in Dockerfiles and compose files on fresh installs.
+    # Written system-wide so it applies to all users including root.
+    - name: Ensure /etc/containers directory exists
+      ansible.builtin.file:
+        path: /etc/containers
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write /etc/containers/registries.conf
+      ansible.builtin.copy:
+        dest: /etc/containers/registries.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # /etc/containers/registries.conf
+          # Managed by Ansible — bootstrap-compose.yml
+          #
+          # Registries searched in order when a short image name is used.
+          # e.g. "composer:2"         -> docker.io/library/composer:2
+          #      "dunglas/frankenphp" -> docker.io/dunglas/frankenphp
+          #
+          # NOTE: [[registry]] blocks require a location= field to be valid.
+          # For simple search order, this single line is all that is needed.
+
+          unqualified-search-registries = ["docker.io", "ghcr.io", "quay.io"]
+
+    # ── 5. create project directories ─────────────────────────────────────────
     - name: Create project and backend directories
       ansible.builtin.file:
         path: "{{ item }}"
@@ -69,7 +101,7 @@
         - "{{ deploy_dir }}"
         - "{{ deploy_dir }}/backups"
 
-    # ── 5. enable Podman socket for the deploy user ───────────────────────────
+    # ── 6. enable Podman socket for the deploy user ───────────────────────────
     - name: Enable Podman socket (user service)
       ansible.builtin.systemd:
         name: podman.socket
@@ -86,4 +118,7 @@
 
     - name: Bootstrap complete
       ansible.builtin.debug:
-        msg: "VM is ready. Run deploy-compose.yml to deploy the app."
+        msg: >
+          VM is ready.
+          Podman can now pull short image names from docker.io, ghcr.io, and quay.io.
+          Run deploy-compose.yml to deploy the app.

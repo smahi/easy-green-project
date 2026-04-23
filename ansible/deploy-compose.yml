@@ -68,6 +68,24 @@
         force: false        # never overwrite an existing .env on the server
       tags: [sync]
 
+    - name: Ensure critical .env variables are correct for Podman stack
+      ansible.builtin.lineinfile:
+        path: "{{ deploy_dir }}/.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+      loop:
+        - { key: 'APP_URL', value: "http://{{ ansible_host }}" }
+        - { key: 'SANCTUM_STATEFUL_DOMAINS', value: "{{ ansible_host }}" }
+        - { key: 'DB_HOST', value: 'db' }
+        - { key: 'DB_CONNECTION', value: 'pgsql' }
+        - { key: 'REDIS_HOST', value: 'valkey' }
+        - { key: 'SESSION_DRIVER', value: 'redis' }
+        - { key: 'SESSION_SECURE_COOKIE', value: 'false' }
+        - { key: 'SESSION_ENCRYPT', value: 'false' }
+        - { key: 'CACHE_STORE', value: 'redis' }
+        - { key: 'QUEUE_CONNECTION', value: 'redis' }
+      tags: [sync, deploy]
+
     # ── 3. build the app image ────────────────────────────────────────────────
     - name: Build app image
       ansible.builtin.command:
@@ -82,21 +100,45 @@
       tags: [build]
 
     # ── 4. start infrastructure (db + valkey) if not already running ──────────
+    - name: Handle PostgreSQL 18 volume layout change (Prune only if failing/uninitialized)
+      ansible.builtin.shell:
+        cmd: |
+          # If container is dead or exited, and we are switching layout, 
+          # pruning is the safest way for a staging environment.
+          if podman ps -a --format "{{ '{{' }}.Names{{ '}}' }}:{{ '{{' }}.Status{{ '}}' }}" | grep -q "myapp_db_1:Exited"; then
+             podman-compose down
+             podman volume rm myapp_db_data || true
+          fi
+        chdir: "{{ deploy_dir }}"
+      ignore_errors: true
+      tags: [deploy]
+
     - name: Ensure db and valkey are up
       ansible.builtin.command:
         cmd: podman-compose up -d db valkey
         chdir: "{{ deploy_dir }}"
       tags: [deploy]
 
-    - name: Wait for PostgreSQL to be healthy
+    - name: Wait for PostgreSQL container to be running
+      ansible.builtin.command:
+        cmd: podman inspect --format "{{ '{{' }}.State.Status{{ '}}' }}" myapp_db_1
+      register: db_state
+      retries: 15
+      delay: 3
+      until: db_state.stdout == "running"
+      changed_when: false
+      tags: [deploy]
+
+    - name: Wait for PostgreSQL to be accepting connections
       ansible.builtin.command:
         cmd: >
           podman exec myapp_db_1
-          pg_isready -U {{ lookup('env', 'DB_USERNAME') | default('myapp') }}
+          pg_isready -h localhost -p 5432
       register: pg_ready
-      retries: 15
+      retries: 20
       delay: 3
       until: pg_ready.rc == 0
+      changed_when: false
       tags: [deploy]
 
     # ── 5. replace app containers with freshly built image ────────────────────
