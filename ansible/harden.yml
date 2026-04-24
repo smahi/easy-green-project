@@ -290,15 +290,17 @@
           Options=mode=1777,strictatime,nosuid,nodev,noexec,size=512M
       register: tmp_mount_dropin
 
-    - name: Reload systemd and remount /tmp
+    - name: Reload systemd for tmp.mount changes
       ansible.builtin.systemd:
         daemon_reload: true
       when: tmp_mount_dropin.changed
 
-    - name: Remount /tmp to apply new options
-      ansible.builtin.command: mount -o remount /tmp
+    - name: Enable and restart tmp.mount to apply /tmp options
+      ansible.builtin.systemd:
+        name: tmp.mount
+        enabled: true
+        state: restarted
       when: tmp_mount_dropin.changed
-      changed_when: true
 
     - name: Harden /dev/shm via fstab entry
       ansible.builtin.lineinfile:
