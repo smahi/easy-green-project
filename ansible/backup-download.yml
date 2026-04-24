@@ -21,6 +21,7 @@
   vars:
     project_root: "{{ ansible_env.HOME }}/easy-green-project"
     deploy_dir: "{{ project_root }}/backend"
+    pod_data_dir: "{{ project_root }}/data"
     remote_backup_dir: "{{ project_root }}/backups"
     backup_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
     backup_filename: "easy-green-backend-{{ inventory_hostname }}-{{ backup_timestamp }}.tar.gz"
@@ -43,6 +44,13 @@
       - "backend/storage/framework/testing"
       - "backend/storage/framework/views"
       - "backend/bootstrap/cache"
+    data_backup_includes:
+      - "data/db"
+      - "data/valkey"
+      - "data/caddy-data"
+      - "data/caddy-config"
+      - "data/app-storage"
+      - "data/app-bootstrap-cache"
 
   tasks:
     - name: Check deployed backend directory exists
@@ -54,6 +62,12 @@
       ansible.builtin.fail:
         msg: "Deployed backend directory not found at {{ deploy_dir }}"
       when: not deploy_dir_stat.stat.exists
+
+    - name: Ensure project data directory exists for backup
+      ansible.builtin.file:
+        path: "{{ pod_data_dir }}"
+        state: directory
+        mode: "0755"
 
     - name: Ensure remote backup directory exists
       ansible.builtin.file:
@@ -69,14 +83,30 @@
             + ([] if backup_include_env | bool else ['backend/.env'])
           }}
 
-    - name: Create compressed backend archive on remote host
+    - name: Include persistent data directories in backup
+      ansible.builtin.set_fact:
+        data_backup_includes_filtered: >-
+          {{
+            data_backup_includes
+            | map('regex_replace', '^', 'data/')
+            | list
+          }}
+
+    - name: Create compressed backend archive with data on remote host
       ansible.builtin.shell: |
         set -euo pipefail
+        cd "{{ project_root }}"
+        mkdir -p "{{ remote_backup_dir }}"
         tar -czf "{{ remote_backup_path }}" \
         {% for pattern in backup_archive_exclude_patterns %}
           --exclude={{ pattern | quote }} \
+        {% endfor %} \
+        backend \
+        {% for data_dir in data_backup_includes %}
+          --transform='s|^data/{{ data_dir }}|{{ data_dir }}|S' \
+          {% if loop.index0 == 0 %}-C {{ pod_data_dir }}{% endif %} \
+          "{{ data_dir }}" \
         {% endfor %}
-          backend
       args:
         chdir: "{{ project_root }}"
         executable: /bin/bash

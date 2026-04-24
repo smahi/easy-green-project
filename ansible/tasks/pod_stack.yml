@@ -46,21 +46,38 @@
   failed_when: false
   changed_when: pod_rm.rc == 0
 
-- name: Ensure Podman volumes exist
-  ansible.builtin.shell: |
-    set -euo pipefail
-    if ! podman volume exists {{ item }}; then
-      podman volume create {{ item }}
-      echo created
-    fi
-  args:
-    chdir: "{{ deploy_dir }}"
-    executable: /bin/bash
-  loop: "{{ pod_volume_names }}"
-  register: pod_volume_create
-  changed_when: "'created' in pod_volume_create.stdout"
+- name: Ensure data directories exist for bind mounts
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ db_bind_path }}"
+    - "{{ valkey_bind_path }}"
+    - "{{ caddy_data_bind_path }}"
+    - "{{ caddy_config_bind_path }}"
+    - "{{ app_storage_bind_path }}"
+    - "{{ app_bootstrap_cache_bind_path }}"
 
-- name: Create application pod with pasta networking
+- name: Ensure Laravel bootstrap cache subdirectory exists
+  ansible.builtin.file:
+    path: "{{ app_bootstrap_cache_bind_path }}/cache"
+    state: directory
+    mode: "0755"
+
+- name: Ensure app storage subdirectories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ app_storage_bind_path }}/app"
+    - "{{ app_storage_bind_path }}/framework/cache"
+    - "{{ app_storage_bind_path }}/framework/sessions"
+    - "{{ app_storage_bind_path }}/framework/views"
+    - "{{ app_storage_bind_path }}/logs"
+
+- name: Remove existing Podman pod if present
   ansible.builtin.command:
     cmd: >-
       podman pod create
@@ -83,7 +100,7 @@
       --env POSTGRES_DB="$DB_DATABASE" \
       --env POSTGRES_USER="$DB_USERNAME" \
       --env POSTGRES_PASSWORD="$DB_PASSWORD" \
-      --volume "{{ db_volume_name }}:/var/lib/postgresql" \
+      --volume "{{ db_bind_path }}:/var/lib/postgresql" \
       postgres:18-alpine
   args:
     chdir: "{{ deploy_dir }}"
@@ -100,7 +117,7 @@
       --pod "{{ pod_name }}" \
       --restart unless-stopped \
       --env VALKEY_PASSWORD="$VALKEY_PASSWORD" \
-      --volume "{{ valkey_volume_name }}:/data" \
+      --volume "{{ valkey_bind_path }}:/data" \
       valkey/valkey:8-alpine \
       sh -lc 'exec valkey-server --save 60 1 --loglevel warning --bind 127.0.0.1 --requirepass "$VALKEY_PASSWORD"'
   args:
@@ -148,9 +165,9 @@
       - --env
       - SERVER_NAME=:8080
       - --volume
-      - "{{ app_storage_volume_name }}:/var/www/html/storage"
+      - "{{ app_storage_bind_path }}:/var/www/html/storage"
       - --volume
-      - "{{ app_bootstrap_cache_volume_name }}:/var/www/html/bootstrap/cache"
+      - "{{ app_bootstrap_cache_bind_path }}:/var/www/html/bootstrap/cache"
       - "{{ app_image }}"
     chdir: "{{ deploy_dir }}"
 
@@ -168,9 +185,9 @@
       - --env-file
       - "{{ deploy_dir }}/.env"
       - --volume
-      - "{{ app_storage_volume_name }}:/var/www/html/storage"
+      - "{{ app_storage_bind_path }}:/var/www/html/storage"
       - --volume
-      - "{{ app_bootstrap_cache_volume_name }}:/var/www/html/bootstrap/cache"
+      - "{{ app_bootstrap_cache_bind_path }}:/var/www/html/bootstrap/cache"
       - "{{ app_image }}"
       - php
       - artisan
@@ -194,9 +211,9 @@
       - --env-file
       - "{{ deploy_dir }}/.env"
       - --volume
-      - "{{ app_storage_volume_name }}:/var/www/html/storage"
+      - "{{ app_storage_bind_path }}:/var/www/html/storage"
       - --volume
-      - "{{ app_bootstrap_cache_volume_name }}:/var/www/html/bootstrap/cache"
+      - "{{ app_bootstrap_cache_bind_path }}:/var/www/html/bootstrap/cache"
       - "{{ app_image }}"
       - php
       - artisan
@@ -219,9 +236,9 @@
       - --volume
       - "{{ deploy_dir }}/caddy/Caddyfile.active:/etc/caddy/Caddyfile:ro"
       - --volume
-      - "{{ caddy_data_volume_name }}:/data"
+      - "{{ caddy_data_bind_path }}:/data"
       - --volume
-      - "{{ caddy_config_volume_name }}:/config"
+      - "{{ caddy_config_bind_path }}:/config"
       - caddy:2-alpine
     chdir: "{{ deploy_dir }}"
 

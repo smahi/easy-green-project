@@ -22,6 +22,15 @@
   vars:
     project_root: "{{ ansible_env.HOME }}/easy-green-project"
     deploy_dir: "{{ project_root }}/backend"
+    pod_data_dir: "{{ project_root }}/data"
+
+    db_bind_path: "{{ pod_data_dir }}/db"
+    valkey_bind_path: "{{ pod_data_dir }}/valkey"
+    caddy_data_bind_path: "{{ pod_data_dir }}/caddy-data"
+    caddy_config_bind_path: "{{ pod_data_dir }}/caddy-config"
+    app_storage_bind_path: "{{ pod_data_dir }}/app-storage"
+    app_bootstrap_cache_bind_path: "{{ pod_data_dir }}/app-bootstrap-cache"
+
     systemd_user_dir: "{{ ansible_env.HOME }}/.config/systemd/user"
     user_runtime_dir: "/run/user/{{ ansible_user_uid }}"
     pod_service_name: "easy-green-pod.service"
@@ -35,20 +44,6 @@
     queue_container_name: "easygreen-queue"
     scheduler_container_name: "easygreen-scheduler"
     caddy_container_name: "easygreen-caddy"
-
-    db_volume_name: "easygreen-db-data"
-    valkey_volume_name: "easygreen-valkey-data"
-    caddy_data_volume_name: "easygreen-caddy-data"
-    caddy_config_volume_name: "easygreen-caddy-config"
-    app_storage_volume_name: "easygreen-app-storage"
-    app_bootstrap_cache_volume_name: "easygreen-app-bootstrap-cache"
-    pod_volume_names:
-      - "{{ db_volume_name }}"
-      - "{{ valkey_volume_name }}"
-      - "{{ caddy_data_volume_name }}"
-      - "{{ caddy_config_volume_name }}"
-      - "{{ app_storage_volume_name }}"
-      - "{{ app_bootstrap_cache_volume_name }}"
 
     pod_publish_ports:
       - "80:80"
