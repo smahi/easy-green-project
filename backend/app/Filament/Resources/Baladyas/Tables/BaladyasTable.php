@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Baladyas\Tables;
 
+use App\Filament\Support\TranslatableColumn;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -11,6 +12,8 @@ use Filament\Tables\Table;
 
 class BaladyasTable
 {
+    use TranslatableColumn;
+
     public static function configure(Table $table): Table
     {
         return $table
@@ -18,9 +21,7 @@ class BaladyasTable
                 TextColumn::make('wilaya.name')
                     ->label(__('Wilaya'))
                     ->sortable(),
-                TextColumn::make('name')
-                    ->searchable()
-                    ->sortable(),
+                self::makeTranslatable('name'),
                 TextColumn::make('code')
                     ->searchable(),
                 IconColumn::make('is_active')

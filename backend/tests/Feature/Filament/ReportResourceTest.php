@@ -56,7 +56,7 @@ it('can create a report', function () {
     ]);
 
     $this->assertDatabaseHas('reports', [
-        'description' => 'Fire in the north field',
+        'description' => json_encode(['en' => 'Fire in the north field']),
         'status' => 'new',
     ]);
 });

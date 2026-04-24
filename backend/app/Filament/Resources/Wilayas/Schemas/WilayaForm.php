@@ -3,8 +3,9 @@
 namespace App\Filament\Resources\Wilayas\Schemas;
 
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 
 class WilayaForm
@@ -13,13 +14,33 @@ class WilayaForm
     {
         return $schema
             ->components([
-                TextInput::make('code')
-                    ->required(),
-                Textarea::make('name')
-                    ->required()
-                    ->columnSpanFull(),
-                Toggle::make('is_active')
-                    ->required(),
+                Section::make(__('Basic Information'))
+                    ->schema([
+                        TextInput::make('code')
+                            ->required(),
+                    ]),
+
+                Section::make(__('Translations'))
+                    ->schema([
+                        Grid::make(3)
+                            ->schema([
+                                TextInput::make('name.en')
+                                    ->label(__('Name (English)'))
+                                    ->required(),
+                                TextInput::make('name.ar')
+                                    ->label(__('Name (Arabic)'))
+                                    ->required(),
+                                TextInput::make('name.fr')
+                                    ->label(__('Name (French)'))
+                                    ->required(),
+                            ]),
+                    ]),
+
+                Section::make(__('Settings'))
+                    ->schema([
+                        Toggle::make('is_active')
+                            ->required(),
+                    ]),
             ]);
     }
 }

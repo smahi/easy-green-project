@@ -19,11 +19,12 @@ class BaladyaForm
                     ->schema([
                         Select::make('wilaya_id')
                             ->relationship('wilaya', 'name')
+                            ->getOptionLabelFromRecordUsing(fn ($record) => $record->getTranslation('name', app()->getLocale()))
                             ->searchable()
                             ->preload()
                             ->required()
                             ->label(__('Wilaya')),
-                            
+
                         TextInput::make('code')
                             ->label(__('Postal/Admin Code')),
                     ]),

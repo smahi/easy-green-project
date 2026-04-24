@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ReportTypes\Tables;
 
+use App\Filament\Support\TranslatableColumn;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -13,13 +14,13 @@ use Filament\Tables\Table;
 
 class ReportTypesTable
 {
+    use TranslatableColumn;
+
     public static function configure(Table $table): Table
     {
         return $table
             ->columns([
-                TextColumn::make('name')
-                    ->searchable()
-                    ->sortable(),
+                self::makeTranslatable('name'),
                 ImageColumn::make('icon')
                     ->circular(),
                 ColorColumn::make('color'),
@@ -64,4 +65,3 @@ class ReportTypesTable
             ->defaultSort('created_at', 'desc');
     }
 }
-

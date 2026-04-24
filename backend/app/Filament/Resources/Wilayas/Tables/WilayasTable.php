@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Wilayas\Tables;
 
+use App\Filament\Support\TranslatableColumn;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -11,6 +12,8 @@ use Filament\Tables\Table;
 
 class WilayasTable
 {
+    use TranslatableColumn;
+
     public static function configure(Table $table): Table
     {
         return $table
@@ -18,9 +21,7 @@ class WilayasTable
                 TextColumn::make('code')
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('name')
-                    ->searchable()
-                    ->sortable(),
+                self::makeTranslatable('name'),
                 IconColumn::make('is_active')
                     ->boolean(),
                 TextColumn::make('created_at')

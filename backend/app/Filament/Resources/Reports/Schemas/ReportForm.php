@@ -29,6 +29,7 @@ class ReportForm
                                     ->disabled(),
                                 Select::make('report_type_id')
                                     ->relationship('reportType', 'name')
+                                    ->getOptionLabelFromRecordUsing(fn ($record) => $record->getTranslation('name', app()->getLocale()))
                                     ->searchable()
                                     ->preload()
                                     ->required()
