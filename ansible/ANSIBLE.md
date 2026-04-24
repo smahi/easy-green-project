@@ -15,6 +15,7 @@ easy-green-project/
     ├── bootstrap-compose.yml   ← Step 2: one-time Podman setup
     ├── deploy-compose.yml      ← Step 3: run on every deploy
     ├── backup-download.yml     ← Step 4: archive backend and fetch locally
+    ├── restore-backup.yml      ← Step 5: restore a specific backup and verify app health
     ├── rollback.yml            ← existing rollback playbook
     ├── vault.yml               ← Ansible Vault secrets
     ├── inventory/
@@ -182,10 +183,35 @@ ansible-playbook ansible/backup-download.yml -i ansible/inventory/staging.ini
 ```
 
 What it does:
-- Archives `~/easy-green-project/backend` on the remote host as a `tar.gz`
+- Archives `~/easy-green-project/backend` on the remote host as a sanitized `tar.gz`
 - Stores the temporary archive in `~/easy-green-project/backups/`
 - Fetches it to `ansible/backups/<inventory_hostname>/` on the control machine
 - Deletes the remote archive after download unless `cleanup_remote_backup=false`
+
+Default exclusions:
+- `.env` unless `backup_include_env=true`
+- editor and agent metadata such as `.github/`, `.vscode/`, `.codex/`, `.claude/`, `.gemini/`, `.agents/`
+- transient files such as `server.log`, `storage/logs/`, `storage/framework/*`, `bootstrap/cache/`
+- `database/database.sqlite` because the deployed stack uses PostgreSQL, not SQLite
+
+### Restore a specific backend backup
+
+```bash
+ansible-playbook ansible/restore-backup.yml -i ansible/inventory/staging.ini \
+  -e restore_backup_file=ansible/backups/u24/easy-green-backend-u24-20260424T051901.tar.gz
+```
+
+What it does:
+- validates the requested local archive before changing the remote host
+- creates a remote pre-restore rollback snapshot in `~/easy-green-project/backups/`
+- uploads and extracts the archive into a temporary remote directory
+- restores the backend into `~/easy-green-project/backend` while preserving the live `.env` by default
+- rebuilds `myapp_app:latest`, restarts the compose stack, and re-enables the user systemd service
+- verifies `php artisan --version`, container status, and the HTTP endpoint
+
+Important defaults:
+- `restore_include_env=false` preserves the live `.env`; this is the safe default for sanitized backups
+- set `restore_include_env=true` only if the selected backup archive contains `.env` and you intentionally want to restore it
 
 ### Deploy to production
 

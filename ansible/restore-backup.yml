@@ -1,0 +1,353 @@
+---
+# ansible/restore-backup.yml
+#
+# Restores a specific backend archive from the Ansible control machine to the
+# remote host, then rebuilds and restarts the Podman Compose stack and verifies
+# the app is healthy.
+#
+# Usage:
+#   ansible-playbook ansible/restore-backup.yml -i ansible/inventory/staging.ini \
+#     -e restore_backup_file=ansible/backups/u24/easy-green-backend-u24-20260424T051901.tar.gz
+
+- name: Restore backend from a specific backup archive
+  hosts: all
+  become: false
+  gather_facts: true
+
+  vars:
+    project_root: "{{ ansible_env.HOME }}/easy-green-project"
+    deploy_dir: "{{ project_root }}/backend"
+    remote_backup_dir: "{{ project_root }}/backups"
+    restore_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+    restore_remote_dir_prefix: "{{ remote_backup_dir }}/restore-"
+    restore_create_remote_rollback: true
+    restore_include_env: false
+    restore_healthcheck_url: "http://{{ ansible_host }}"
+    app_image: "myapp_app:latest"
+    compose_service_name: "podman-compose-myapp.service"
+    user_runtime_dir: "/run/user/{{ ansible_user_uid }}"
+    restore_recreate_containers:
+      - myapp_caddy_1
+      - myapp_scheduler_1
+      - myapp_queue_1
+      - myapp_app_1
+    backup_exclude_patterns:
+      - "backend/.agents"
+      - "backend/.claude"
+      - "backend/.codex"
+      - "backend/.gemini"
+      - "backend/.github"
+      - "backend/.vscode"
+      - "backend/server.log"
+      - "backend/database/database.sqlite"
+      - "backend/storage/logs"
+      - "backend/storage/framework/cache"
+      - "backend/storage/framework/sessions"
+      - "backend/storage/framework/testing"
+      - "backend/storage/framework/views"
+      - "backend/bootstrap/cache"
+
+  tasks:
+    - name: Require a backup file path
+      ansible.builtin.assert:
+        that:
+          - restore_backup_file is defined
+          - restore_backup_file | length > 0
+          - restore_backup_file is match('.*\\.tar\\.gz$')
+        fail_msg: >-
+          Set restore_backup_file to a .tar.gz archive on the control machine,
+          for example ansible/backups/u24/easy-green-backend-u24-20260424T051901.tar.gz
+
+    - name: Resolve backup file path on the control machine
+      ansible.builtin.set_fact:
+        restore_backup_local_path: >-
+          {{
+            restore_backup_file
+            if restore_backup_file.startswith('/')
+            else lookup('ansible.builtin.env', 'PWD') ~ '/' ~ restore_backup_file
+          }}
+
+    - name: Check requested backup archive exists locally
+      ansible.builtin.stat:
+        path: "{{ restore_backup_local_path }}"
+      register: restore_backup_local_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Fail if requested backup archive is missing locally
+      ansible.builtin.fail:
+        msg: "Backup archive not found on control machine: {{ restore_backup_local_path }}"
+      when: not restore_backup_local_stat.stat.exists
+
+    - name: Validate backup archive contains required app files
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - -lc
+          - >
+            set -euo pipefail &&
+            tar -tzf {{ restore_backup_local_path | quote }} backend/compose.yaml backend/artisan >/dev/null
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Ensure deployed backend directory exists
+      ansible.builtin.stat:
+        path: "{{ deploy_dir }}"
+      register: restore_deploy_dir_stat
+
+    - name: Fail if deployed backend directory is missing
+      ansible.builtin.fail:
+        msg: "Deployed backend directory not found at {{ deploy_dir }}"
+      when: not restore_deploy_dir_stat.stat.exists
+
+    - name: Ensure remote backup directory exists
+      ansible.builtin.file:
+        path: "{{ remote_backup_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Build exclude patterns for remote rollback snapshot
+      ansible.builtin.set_fact:
+        restore_snapshot_exclude_patterns: >-
+          {{
+            backup_exclude_patterns
+            + ([] if restore_include_env | bool else ['backend/.env'])
+          }}
+
+    - name: Generate rollback archive name
+      ansible.builtin.set_fact:
+        restore_remote_rollback_path: >-
+          {{ remote_backup_dir }}/easy-green-backend-pre-restore-{{ inventory_hostname }}-{{ restore_timestamp }}.tar.gz
+
+    - name: Create temporary restore directory on remote host
+      ansible.builtin.command:
+        argv:
+          - mktemp
+          - -d
+          - "{{ restore_remote_dir_prefix }}XXXXXX"
+      register: restore_remote_temp_dir
+      changed_when: true
+
+    - name: Set remote restore archive path
+      ansible.builtin.set_fact:
+        restore_remote_archive_path: "{{ restore_remote_temp_dir.stdout }}/{{ restore_backup_local_path | basename }}"
+
+    - block:
+        - name: Ensure rsync is available on remote host
+          ansible.builtin.command:
+            argv:
+              - /bin/bash
+              - -lc
+              - command -v rsync
+          changed_when: false
+
+        - name: Create pre-restore rollback snapshot on remote host
+          ansible.builtin.shell: |
+            set -euo pipefail
+            tar -czf "{{ restore_remote_rollback_path }}" \
+            {% for pattern in restore_snapshot_exclude_patterns %}
+              --exclude={{ pattern | quote }} \
+            {% endfor %}
+              backend
+          args:
+            chdir: "{{ project_root }}"
+            executable: /bin/bash
+          when: restore_create_remote_rollback | bool
+
+        - name: Upload requested backup archive to remote host
+          ansible.builtin.copy:
+            src: "{{ restore_backup_local_path }}"
+            dest: "{{ restore_remote_archive_path }}"
+            mode: "0600"
+
+        - name: Extract uploaded backup archive on remote host
+          ansible.builtin.unarchive:
+            src: "{{ restore_remote_archive_path }}"
+            dest: "{{ restore_remote_temp_dir.stdout }}"
+            remote_src: true
+
+        - name: Validate extracted archive contains compose file
+          ansible.builtin.stat:
+            path: "{{ restore_remote_temp_dir.stdout }}/backend/compose.yaml"
+          register: restore_compose_stat
+
+        - name: Validate extracted archive contains artisan entrypoint
+          ansible.builtin.stat:
+            path: "{{ restore_remote_temp_dir.stdout }}/backend/artisan"
+          register: restore_artisan_stat
+
+        - name: Validate extracted archive contains .env when requested
+          ansible.builtin.stat:
+            path: "{{ restore_remote_temp_dir.stdout }}/backend/.env"
+          register: restore_env_archive_stat
+
+        - name: Fail if extracted archive is not a valid backend backup
+          ansible.builtin.fail:
+            msg: >-
+              Backup archive must extract a backend/ directory containing both
+              compose.yaml and artisan.
+          when:
+            - not restore_compose_stat.stat.exists or not restore_artisan_stat.stat.exists
+
+        - name: Ensure live .env exists before sanitized restore
+          ansible.builtin.stat:
+            path: "{{ deploy_dir }}/.env"
+          register: restore_env_stat
+
+        - name: Fail if live .env is missing and backup excludes it
+          ansible.builtin.fail:
+            msg: >-
+              Live {{ deploy_dir }}/.env is missing. Restore cannot continue with
+              a sanitized backup unless you either restore a backup that includes
+              .env or recreate the file first.
+          when:
+            - not restore_include_env | bool
+            - not restore_env_stat.stat.exists
+
+        - name: Fail if .env restore was requested but archive does not contain it
+          ansible.builtin.fail:
+            msg: >-
+              restore_include_env=true was requested, but the selected backup
+              archive does not contain backend/.env.
+          when:
+            - restore_include_env | bool
+            - not restore_env_archive_stat.stat.exists
+
+        - name: Sync extracted backup into deploy directory while preserving live .env
+          ansible.builtin.command:
+            argv:
+              - rsync
+              - -a
+              - --delete
+              - --filter=P .env
+              - "{{ restore_remote_temp_dir.stdout }}/backend/"
+              - "{{ deploy_dir }}/"
+          when: not restore_include_env | bool
+
+        - name: Sync extracted backup into deploy directory including .env
+          ansible.builtin.command:
+            argv:
+              - rsync
+              - -a
+              - --delete
+              - "{{ restore_remote_temp_dir.stdout }}/backend/"
+              - "{{ deploy_dir }}/"
+          when: restore_include_env | bool
+
+        - name: Build app image from restored backend
+          ansible.builtin.command:
+            cmd: >
+              podman build
+              --file docker/app.Dockerfile
+              --tag {{ app_image }}
+              .
+            chdir: "{{ deploy_dir }}"
+          register: restore_build_result
+          changed_when: restore_build_result.rc == 0
+
+        - name: Ensure db and valkey are up after restore
+          ansible.builtin.command:
+            cmd: podman-compose up -d db valkey
+            chdir: "{{ deploy_dir }}"
+
+        - name: Wait for PostgreSQL container to be running after restore
+          ansible.builtin.command:
+            cmd: podman inspect --format "{{ '{{' }}.State.Status{{ '}}' }}" myapp_db_1
+          register: restore_db_state
+          retries: 15
+          delay: 3
+          until: restore_db_state.stdout == "running"
+          changed_when: false
+
+        - name: Wait for PostgreSQL to be accepting connections after restore
+          ansible.builtin.command:
+            cmd: >
+              podman exec myapp_db_1
+              pg_isready -h localhost -p 5432
+          register: restore_pg_ready
+          retries: 20
+          delay: 3
+          until: restore_pg_ready.rc == 0
+          changed_when: false
+
+        - name: Remove app containers before starting restored stack
+          ansible.builtin.command:
+            cmd: "podman rm -f {{ item }}"
+            chdir: "{{ deploy_dir }}"
+          loop: "{{ restore_recreate_containers }}"
+          ignore_errors: true
+
+        - name: Start restored app containers
+          ansible.builtin.command:
+            cmd: podman-compose up -d app queue scheduler
+            chdir: "{{ deploy_dir }}"
+
+        - name: Ensure caddy is up after restore
+          ansible.builtin.command:
+            cmd: podman-compose up -d caddy
+            chdir: "{{ deploy_dir }}"
+
+        - name: Re-run compose systemd user service after restore
+          ansible.builtin.systemd:
+            name: "{{ compose_service_name }}"
+            enabled: true
+            state: restarted
+            scope: user
+            daemon_reload: true
+          environment:
+            XDG_RUNTIME_DIR: "{{ user_runtime_dir }}"
+
+        - name: Verify Laravel boots inside the restored app container
+          ansible.builtin.command:
+            cmd: podman exec myapp_app_1 php artisan --version
+            chdir: "{{ deploy_dir }}"
+          register: restore_artisan_version
+          changed_when: false
+
+        - name: Verify all restore-managed containers are running
+          ansible.builtin.command:
+            cmd: podman ps --format "{{ '{{' }}.Names{{ '}}' }}:{{ '{{' }}.Status{{ '}}' }}"
+            chdir: "{{ deploy_dir }}"
+          register: restore_ps
+          changed_when: false
+
+        - name: Assert expected containers are present after restore
+          ansible.builtin.assert:
+            that:
+              - "'myapp_db_1:Up' in restore_ps.stdout"
+              - "'myapp_valkey_1:Up' in restore_ps.stdout"
+              - "'myapp_app_1:Up' in restore_ps.stdout"
+              - "'myapp_queue_1:Up' in restore_ps.stdout"
+              - "'myapp_scheduler_1:Up' in restore_ps.stdout"
+              - "'myapp_caddy_1:Up' in restore_ps.stdout"
+            fail_msg: "One or more expected containers are not running after restore."
+
+        - name: Wait for restored app HTTP endpoint to respond
+          ansible.builtin.uri:
+            url: "{{ restore_healthcheck_url }}"
+            status_code: [200, 301, 302]
+            timeout: 30
+          register: restore_smoke
+          retries: 12
+          delay: 5
+          until: restore_smoke.status in [200, 301, 302]
+
+        - name: Show restore summary
+          ansible.builtin.debug:
+            msg: >-
+              Restore completed from {{ restore_backup_local_path }}.
+              HTTP {{ restore_smoke.status }} at {{ restore_healthcheck_url }}.
+              rollback_snapshot={{ restore_remote_rollback_path if restore_create_remote_rollback | bool else 'disabled' }}
+      always:
+        - name: Remove uploaded restore archive from remote host
+          ansible.builtin.file:
+            path: "{{ restore_remote_archive_path }}"
+            state: absent
+          when: restore_remote_archive_path is defined
+
+        - name: Remove temporary restore directory from remote host
+          ansible.builtin.file:
+            path: "{{ restore_remote_temp_dir.stdout }}"
+            state: absent
+          when: restore_remote_temp_dir is defined and restore_remote_temp_dir.stdout is defined

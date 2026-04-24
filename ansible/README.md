@@ -18,6 +18,7 @@
 ansible/
 ├── bootstrap-compose.yml   # One-time Podman/bootstrap setup
 ├── backup-download.yml     # Archive deployed app and fetch it locally
+├── restore-backup.yml      # Restore a specific backup and verify the app
 ├── deploy-compose.yml      # Main backend deploy playbook
 ├── inventory/
 │   ├── staging.ini         # u24 multipass VM
@@ -116,9 +117,40 @@ ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml
 ansible-playbook -i ansible/inventory/staging.ini ansible/backup-download.yml
 ```
 
-This creates a `tar.gz` archive of `~/easy-green-project/backend` on the target,
-downloads it to `ansible/backups/<inventory_hostname>/`, and removes the remote
-archive afterward by default.
+This creates a sanitized `tar.gz` archive of `~/easy-green-project/backend` on
+the target, downloads it to `ansible/backups/<inventory_hostname>/`, and
+removes the remote archive afterward by default.
+
+By default it excludes transient and sensitive-noise paths such as `.env`,
+editor/agent metadata, logs, framework caches, and `database/database.sqlite`.
+If you explicitly want the deployed `.env` included:
+
+```bash
+ansible-playbook -i ansible/inventory/staging.ini ansible/backup-download.yml \
+  -e backup_include_env=true
+```
+
+### Restore a specific backup and verify the app
+
+```bash
+ansible-playbook -i ansible/inventory/staging.ini ansible/restore-backup.yml \
+  -e restore_backup_file=ansible/backups/u24/easy-green-backend-u24-20260424T051901.tar.gz
+```
+
+Best-practice restore behavior:
+- validates the requested local archive before touching the server
+- creates a remote pre-restore rollback snapshot by default
+- preserves the live `.env` unless you explicitly restore a backup that includes it
+- rebuilds the app image and restarts the Podman Compose stack
+- verifies both `php artisan --version` and the HTTP endpoint after restore
+
+If the backup archive already contains `.env` and you want to restore it too:
+
+```bash
+ansible-playbook -i ansible/inventory/staging.ini ansible/restore-backup.yml \
+  -e restore_backup_file=ansible/backups/u24/your-backup.tar.gz \
+  -e restore_include_env=true
+```
 
 ### Dry run (check mode)
 

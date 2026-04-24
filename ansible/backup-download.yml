@@ -6,6 +6,7 @@
 #
 # Usage:
 #   ansible-playbook ansible/backup-download.yml -i ansible/inventory/staging.ini
+#   ansible-playbook ansible/backup-download.yml -i ansible/inventory/staging.ini -e backup_include_env=true
 
 - name: Backup deployed backend and download it locally
   hosts: all
@@ -21,6 +22,22 @@
     remote_backup_path: "{{ remote_backup_dir }}/{{ backup_filename }}"
     local_backup_dir: "{{ playbook_dir }}/backups/{{ inventory_hostname }}"
     cleanup_remote_backup: true
+    backup_include_env: false
+    backup_exclude_patterns:
+      - "backend/.agents"
+      - "backend/.claude"
+      - "backend/.codex"
+      - "backend/.gemini"
+      - "backend/.github"
+      - "backend/.vscode"
+      - "backend/server.log"
+      - "backend/database/database.sqlite"
+      - "backend/storage/logs"
+      - "backend/storage/framework/cache"
+      - "backend/storage/framework/sessions"
+      - "backend/storage/framework/testing"
+      - "backend/storage/framework/views"
+      - "backend/bootstrap/cache"
 
   tasks:
     - name: Check deployed backend directory exists
@@ -39,11 +56,25 @@
         state: directory
         mode: "0755"
 
+    - name: Build list of excluded patterns for archive
+      ansible.builtin.set_fact:
+        backup_archive_exclude_patterns: >-
+          {{
+            backup_exclude_patterns
+            + ([] if backup_include_env | bool else ['backend/.env'])
+          }}
+
     - name: Create compressed backend archive on remote host
-      ansible.builtin.archive:
-        path: "{{ deploy_dir }}"
-        dest: "{{ remote_backup_path }}"
-        format: gz
+      ansible.builtin.shell: |
+        set -euo pipefail
+        tar -czf "{{ remote_backup_path }}" \
+        {% for pattern in backup_archive_exclude_patterns %}
+          --exclude={{ pattern | quote }} \
+        {% endfor %}
+          backend
+      args:
+        chdir: "{{ project_root }}"
+        executable: /bin/bash
 
     - name: Ensure local backup directory exists
       ansible.builtin.file:
@@ -67,4 +98,6 @@
 
     - name: Show local backup path
       ansible.builtin.debug:
-        msg: "Backup downloaded to {{ local_backup_dir }}/{{ backup_filename }}"
+        msg: >-
+          Backup downloaded to {{ local_backup_dir }}/{{ backup_filename }}.
+          backup_include_env={{ backup_include_env | bool }}
