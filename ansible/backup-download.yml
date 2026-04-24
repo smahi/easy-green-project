@@ -90,9 +90,14 @@
 
     - name: Build tar data directory arguments
       ansible.builtin.set_fact:
-        tar_data_args: "{{ tar_data_args | default([]) + ['-C', pod_data_dir, item] }}"
+        tar_data_args: "{{ (tar_data_args | default([])) + ['-C', pod_data_dir, item] }}"
       loop: "{{ data_backup_includes }}"
       when: (pod_data_dir ~ '/' ~ item) is exists
+
+    - name: Initialize tar_data_args if no directories exist
+      ansible.builtin.set_fact:
+        tar_data_args: []
+      when: tar_data_args is not defined
 
     - name: Create compressed backend archive with data on remote host
       ansible.builtin.shell: |
