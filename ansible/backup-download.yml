@@ -83,34 +83,25 @@
             + ([] if backup_include_env | bool else ['backend/.env'])
           }}
 
-    - name: Include persistent data directories in backup
+    - name: Build tar exclude arguments
       ansible.builtin.set_fact:
-        data_backup_includes_filtered: >-
-          {{
-            data_backup_includes
-            | map('regex_replace', '^', 'data/')
-            | list
-          }}
+        tar_exclude_args: "{{ tar_exclude_args | default([]) + ['--exclude=' ~ item] }}"
+      loop: "{{ backup_archive_exclude_patterns }}"
+
+    - name: Build tar data directory arguments
+      ansible.builtin.set_fact:
+        tar_data_args: "{{ tar_data_args | default([]) + ['-C', pod_data_dir, item] }}"
+      loop: "{{ data_backup_includes }}"
+      when: (pod_data_dir + '/' + item) is ansible.builtin.path_exists
+      vars:
+        tar_data_args: []
 
     - name: Create compressed backend archive with data on remote host
       ansible.builtin.shell: |
         set -euo pipefail
         cd "{{ project_root }}"
         mkdir -p "{{ remote_backup_dir }}"
-
-        TAR_ARGS=(-czf "{{ remote_backup_path }}")
-        {% for pattern in backup_archive_exclude_patterns %}
-        TAR_ARGS+=(--exclude={{ pattern | quote }})
-        {% endfor %}
-        TAR_ARGS+=(backend)
-
-        {% for data_dir in data_backup_includes %}
-        if [ -d "{{ pod_data_dir }}/{{ data_dir }}" ]; then
-          TAR_ARGS+=(-C "{{ pod_data_dir }}" "{{ data_dir }}")
-        fi
-        {% endfor }
-
-        tar "${TAR_ARGS[@]}"
+        tar -czf "{{ remote_backup_path }}" {{ tar_exclude_args | join(' ') }} backend {{ tar_data_args | join(' ') }}
       args:
         chdir: "{{ project_root }}"
         executable: /bin/bash
