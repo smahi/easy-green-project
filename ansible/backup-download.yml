@@ -97,16 +97,20 @@
         set -euo pipefail
         cd "{{ project_root }}"
         mkdir -p "{{ remote_backup_dir }}"
-        tar -czf "{{ remote_backup_path }}" \
+
+        TAR_ARGS=(-czf "{{ remote_backup_path }}")
         {% for pattern in backup_archive_exclude_patterns %}
-          --exclude={{ pattern | quote }} \
-        {% endfor %} \
-        backend \
-        {% for data_dir in data_backup_includes %}
-          --transform='s|^data/{{ data_dir }}|{{ data_dir }}|S' \
-          {% if loop.index0 == 0 %}-C {{ pod_data_dir }}{% endif %} \
-          "{{ data_dir }}" \
+        TAR_ARGS+=(--exclude={{ pattern | quote }})
         {% endfor %}
+        TAR_ARGS+=(backend)
+
+        {% for data_dir in data_backup_includes %}
+        if [ -d "{{ pod_data_dir }}/{{ data_dir }}" ]; then
+          TAR_ARGS+=(-C "{{ pod_data_dir }}" "{{ data_dir }}")
+        fi
+        {% endfor }
+
+        tar "${TAR_ARGS[@]}"
       args:
         chdir: "{{ project_root }}"
         executable: /bin/bash
