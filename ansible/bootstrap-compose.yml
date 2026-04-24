@@ -1,11 +1,15 @@
 ---
 # ansible/bootstrap-compose.yml
 #
-# One-time setup of the Multipass VM before the first deploy.
-# Run this once, then use deploy-compose.yml for all subsequent deploys.
+# One-time Podman bootstrap for a hardened host. Run this after harden.yml and
+# a reboot, then use deploy-compose.yml for application releases.
 #
 # Usage:
 #   ansible-playbook ansible/bootstrap-compose.yml -i ansible/inventory/staging.ini
+#   ansible-playbook ansible/bootstrap-compose.yml -i ansible/inventory/production.ini
+#
+# Run order:
+#   harden.yml -> reboot -> bootstrap-compose.yml -> deploy-compose.yml
 
 - name: Bootstrap VM for Podman Compose deployment
   hosts: staging

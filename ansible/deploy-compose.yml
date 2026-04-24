@@ -1,14 +1,16 @@
 ---
 # ansible/deploy-compose.yml
 #
-# Deploys the Laravel 12 / Filament 5 backend to the Multipass staging VM.
+# Main application deploy playbook. Run this after bootstrap-compose.yml on the
+# first deploy, then run it again for every later release.
 #
 # Usage:
 #   ansible-playbook ansible/deploy-compose.yml -i ansible/inventory/staging.ini
+#   ansible-playbook ansible/deploy-compose.yml -i ansible/inventory/production.ini
 #   ansible-playbook ansible/deploy-compose.yml -i ansible/inventory/staging.ini --tags build
 #   ansible-playbook ansible/deploy-compose.yml -i ansible/inventory/staging.ini --tags restart
 #
-# Prerequisites on the VM (run ansible/bootstrap-compose.yml first if needed):
+# Prerequisites on the target host:
 #   - Podman + podman-compose installed
 #   - Port 80 unprivileged binding enabled
 #   - Project directory exists at {{ deploy_dir }}

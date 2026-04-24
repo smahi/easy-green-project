@@ -1,12 +1,17 @@
 ---
 # ansible/backup-download.yml
 #
-# Archives the deployed backend directory on the target host and fetches the
-# resulting tar.gz archive back to the Ansible control machine.
+# Optional operational playbook. Archives the deployed backend directory on the
+# target host and downloads the resulting tar.gz to the control machine.
 #
 # Usage:
 #   ansible-playbook ansible/backup-download.yml -i ansible/inventory/staging.ini
+#   ansible-playbook ansible/backup-download.yml -i ansible/inventory/production.ini
 #   ansible-playbook ansible/backup-download.yml -i ansible/inventory/staging.ini -e backup_include_env=true
+#
+# Primary workflow:
+#   harden.yml -> reboot -> bootstrap-compose.yml -> deploy-compose.yml
+#   backup-download.yml is run later only when a local backup is needed.
 
 - name: Backup deployed backend and download it locally
   hosts: all

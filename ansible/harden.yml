@@ -1,11 +1,12 @@
 ---
 # ansible/harden.yml
 #
-# One-time VPS security hardening. Run this BEFORE bootstrap-compose.yml
-# on any fresh server (Multipass staging or production VPS).
+# One-time host hardening. Run this first on any fresh staging or production
+# server, then reboot before running bootstrap-compose.yml.
 #
 # Usage:
 #   ansible-playbook ansible/harden.yml -i ansible/inventory/staging.ini
+#   ansible-playbook ansible/harden.yml -i ansible/inventory/production.ini
 #
 # What it does (in order):
 #   1.  System update
@@ -23,8 +24,11 @@
 #   13. Rootkit scanner (rkhunter)
 #   14. Login banner
 #
-# ⚠  Run as a user with sudo. The playbook does NOT disable your current
-#    SSH key or lock you out — read the SSH vars below before running.
+# Notes:
+#   - Run as a sudo-capable user.
+#   - This playbook manages /tmp through systemd tmp.mount rather than a raw
+#     mount remount command.
+#   - Review the SSH vars below before running on a remote host.
 
 - name: Harden VPS security
   hosts: staging

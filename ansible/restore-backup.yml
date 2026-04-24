@@ -1,13 +1,17 @@
 ---
 # ansible/restore-backup.yml
 #
-# Restores a specific backend archive from the Ansible control machine to the
-# remote host, then rebuilds and restarts the Podman Compose stack and verifies
-# the app is healthy.
+# Optional recovery playbook. Restores a specific backend archive from the
+# control machine to the remote host, then rebuilds and verifies the stack.
 #
 # Usage:
 #   ansible-playbook ansible/restore-backup.yml -i ansible/inventory/staging.ini \
 #     -e restore_backup_file=ansible/backups/u24/easy-green-backend-u24-20260424T051901.tar.gz
+#   ansible-playbook ansible/restore-backup.yml -i ansible/inventory/production.ini \
+#     -e restore_backup_file=/absolute/path/to/backup.tar.gz
+#
+# This is not part of the normal deploy flow. Use it only for recovery or
+# rollback-to-backup scenarios.
 
 - name: Restore backend from a specific backup archive
   hosts: all
