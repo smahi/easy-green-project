@@ -1,22 +1,24 @@
 # EASY GREEN - Ansible Operations
 
 Single-source guide for provisioning, deploying, backing up, and restoring the
-Easy Green backend.
+Easy Green backend with a rootless Podman pod.
 
 ## Playbooks
 
 ```text
 ansible/
-├── harden.yml              # One-time host hardening
-├── bootstrap-compose.yml   # One-time Podman/rootless setup
-├── deploy-compose.yml      # Main app deploy playbook
-├── backup-download.yml     # Download a sanitized backend backup
-├── restore-backup.yml      # Restore a selected backend backup
-├── rollback.yml            # Existing rollback helper
+├── harden.yml            # One-time host hardening
+├── bootstrap-pod.yml     # One-time Podman/rootless bootstrap
+├── deploy-pod.yml        # Main app deploy playbook
+├── backup-download.yml   # Download a sanitized backend backup
+├── restore-backup.yml    # Restore a selected backend backup
+├── rollback.yml          # Legacy release/symlink rollback helper
 ├── inventory/
 │   ├── staging.ini
 │   └── production.ini
 ├── group_vars/
+├── tasks/
+│   └── pod_stack.yml     # Shared pod recreation logic
 ├── vault.yml
 └── README.md
 ```
@@ -37,8 +39,8 @@ chmod 600 ~/.ansible_vault_pass
 
 ## Setup
 
-1. Edit `ansible/vault.yml` with real secrets, then encrypt it if needed.
-2. Verify the inventory you want to target.
+1. Edit `ansible/vault.yml` with real secrets.
+2. Verify the target inventory.
 3. Generate an app key locally and store it in the vault.
 
 ```bash
@@ -48,41 +50,41 @@ cd backend && php artisan key:generate --show
 
 ## Run Order
 
-For a fresh server, run the playbooks in this order:
+Fresh server flow:
 
 ```text
-harden.yml -> reboot -> bootstrap-compose.yml -> deploy-compose.yml
+harden.yml -> reboot -> bootstrap-pod.yml -> deploy-pod.yml
 ```
 
-Staging example:
+Staging:
 
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/harden.yml
 ansible staging -i ansible/inventory/staging.ini -m reboot
-ansible-playbook -i ansible/inventory/staging.ini ansible/bootstrap-compose.yml
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml
+ansible-playbook -i ansible/inventory/staging.ini ansible/bootstrap-pod.yml
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml
 ```
 
-Production example:
+Production:
 
 ```bash
 ansible-playbook -i ansible/inventory/production.ini ansible/harden.yml
 ansible production -i ansible/inventory/production.ini -m reboot
-ansible-playbook -i ansible/inventory/production.ini ansible/bootstrap-compose.yml
-ansible-playbook -i ansible/inventory/production.ini ansible/deploy-compose.yml
+ansible-playbook -i ansible/inventory/production.ini ansible/bootstrap-pod.yml
+ansible-playbook -i ansible/inventory/production.ini ansible/deploy-pod.yml
 ```
 
-For later application releases, run only:
+Later application releases:
 
 ```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml
 ```
 
 ## What Each Playbook Does
 
 ### `harden.yml`
 
-Run once before anything else on a new host.
+Run once on a new host.
 
 - updates packages
 - hardens SSH
@@ -91,94 +93,67 @@ Run once before anything else on a new host.
 - hardens `/tmp` and `/dev/shm`
 - enables unattended upgrades, auditd, and other baseline protections
 
-Note: `/tmp` is managed through `systemd` `tmp.mount`. The playbook reloads
-`systemd` and restarts `tmp.mount` when the drop-in changes, instead of calling
-`mount -o remount /tmp`.
-
-### `bootstrap-compose.yml`
+### `bootstrap-pod.yml`
 
 Run once after hardening.
 
-- installs `podman` and `podman-compose`
+- installs Podman, `passt`/`pasta`, `slirp4netns`, `uidmap`, and `rsync`
 - enables rootless low-port binding
-- writes container DNS configuration
-- creates project directories
+- sets rootless Podman to prefer `pasta`
+- configures registry search order and container DNS
 - enables the user Podman socket and linger
 
-### `deploy-compose.yml`
+### `deploy-pod.yml`
 
 Run on every deploy.
 
 - syncs `backend/` to the host
 - preserves the existing remote `.env`
+- forces Laravel DB/Redis hosts to `127.0.0.1` inside the pod
 - builds the app image
-- starts or refreshes the Podman Compose stack
-- re-enables the user `systemd` service
+- recreates the rootless Podman pod with `pasta`
+- recreates DB, Valkey, app, queue, scheduler, and Caddy containers
+- enables the user systemd unit for pod restart on boot
 - smoke-tests the deployed app
 
 Useful tags:
 
 ```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml --tags build
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml --tags restart
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml --tags smoke
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml --tags build
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml --tags deploy
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml --tags smoke
 ```
 
 ### `backup-download.yml`
 
-Run when you want a local copy of the deployed backend.
+Downloads a sanitized backend archive from the host:
 
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/backup-download.yml
 ```
 
-Behavior:
-
-- creates a sanitized archive on the remote host
-- downloads it to `ansible/backups/<inventory_hostname>/`
-- removes the temporary remote archive by default
-- excludes `.env` unless `backup_include_env=true`
-
-Include `.env` only when you explicitly want it:
-
-```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/backup-download.yml \
-  -e backup_include_env=true
-```
-
 ### `restore-backup.yml`
 
-Run when you need to restore a downloaded backend archive.
+Restores a downloaded backend archive and then rebuilds the same Podman pod stack:
 
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/restore-backup.yml \
   -e restore_backup_file=ansible/backups/u24/easy-green-backend-u24-20260424T051901.tar.gz
 ```
 
-Behavior:
+## Runtime Layout
 
-- validates the selected local archive first
-- creates a pre-restore rollback snapshot remotely
-- restores the backend while preserving the live `.env` by default
-- rebuilds and restarts the stack
-- verifies artisan and HTTP health checks
+The deployed stack runs as one rootless Podman pod with `pasta` networking:
 
-Restore the backup `.env` only if the archive contains one and you intend to use it:
+- `easygreen-db`
+- `easygreen-valkey`
+- `easygreen-app`
+- `easygreen-queue`
+- `easygreen-scheduler`
+- `easygreen-caddy`
 
-```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/restore-backup.yml \
-  -e restore_backup_file=ansible/backups/u24/your-backup.tar.gz \
-  -e restore_include_env=true
-```
-
-## Inventories
-
-`ansible/inventory/staging.ini` targets the Multipass VM.
-
-`ansible/inventory/production.ini` targets the production VPS.
-
-If you change the SSH port in `harden.yml`, update the inventory host entry to
-match.
+Containers communicate over `127.0.0.1` inside the shared pod network
+namespace. Only Caddy publishes host ports.
 
 ## Common Operations
 
@@ -192,7 +167,7 @@ Remote artisan command:
 
 ```bash
 ansible staging -i ansible/inventory/staging.ini -m command \
-  -a "podman exec myapp_app_1 php artisan migrate:status" \
+  -a "podman exec easygreen-app php artisan migrate:status" \
   --become=false
 ```
 
@@ -200,13 +175,21 @@ Tail app logs:
 
 ```bash
 ansible staging -i ansible/inventory/staging.ini -m command \
-  -a "podman logs --tail=50 myapp_app_1" \
+  -a "podman logs --tail=50 easygreen-app" \
+  --become=false
+```
+
+Pod status:
+
+```bash
+ansible staging -i ansible/inventory/staging.ini -m command \
+  -a "podman pod ps && podman ps --filter pod=easygreen-pod" \
   --become=false
 ```
 
 ## Troubleshooting
 
-`community.general.ufw` or `ansible.posix` missing:
+Missing collections:
 
 ```bash
 ansible-galaxy collection install community.general ansible.posix
@@ -219,9 +202,8 @@ ansible staging -i ansible/inventory/staging.ini -m apt \
   -a "name=rsync state=present" --become
 ```
 
-Smoke test fails after deploy:
+Pod startup failure:
 
 ```bash
-ssh -i ~/.ssh/id_rsa_multipass ubuntu@10.250.127.182 \
-  "podman logs myapp_app_1 --tail=50"
+incus exec u24 -- bash -lc 'podman pod ps; podman ps -a; podman logs easygreen-db || true; podman logs easygreen-app || true'
 ```

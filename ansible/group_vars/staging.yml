@@ -5,8 +5,11 @@ app_debug: true
 app_log_level: "debug"
 caddy_admin_email: "admin@staging.local"
 
-# Use plain HTTP on the VM IP for local multipass testing.
+# Use plain HTTP on the VM IP for local VM testing.
 caddy_tls_mode: "disabled"
+pod_publish_ports:
+  - "80:80"
+pod_caddy_config: "caddy/Caddyfile.staging"
 
 # Skip backups in staging
 backups_enabled: false

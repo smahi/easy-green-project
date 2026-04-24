@@ -1,0 +1,112 @@
+---
+# ansible/bootstrap-pod.yml
+#
+# One-time Podman bootstrap for a hardened host. Run this after harden.yml and
+# a reboot, then use deploy-pod.yml for application releases.
+#
+# Usage:
+#   ansible-playbook ansible/bootstrap-pod.yml -i ansible/inventory/staging.ini
+#   ansible-playbook ansible/bootstrap-pod.yml -i ansible/inventory/production.ini
+#
+# Run order:
+#   harden.yml -> reboot -> bootstrap-pod.yml -> deploy-pod.yml
+
+- name: Bootstrap VM for rootless Podman pod deployment
+  hosts: staging
+  become: true
+
+  vars:
+    deploy_user: ubuntu
+    project_root: "/home/{{ deploy_user }}/easy-green-project"
+    deploy_dir: "{{ project_root }}/backend"
+    containers_conf_dir: "/home/{{ deploy_user }}/.config/containers"
+
+  tasks:
+    - name: Install Podman and rootless networking dependencies
+      ansible.builtin.apt:
+        name:
+          - podman
+          - passt
+          - slirp4netns
+          - uidmap
+          - rsync
+        state: present
+        update_cache: true
+
+    - name: Allow unprivileged port binding from port 80
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_unprivileged_port_start
+        value: "80"
+        state: present
+        sysctl_file: /etc/sysctl.d/99-podman-ports.conf
+        reload: true
+
+    - name: Ensure user containers config directory exists
+      ansible.builtin.file:
+        path: "{{ containers_conf_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Write user containers.conf for rootless pasta networking
+      ansible.builtin.copy:
+        dest: "{{ containers_conf_dir }}/containers.conf"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+        content: |
+          [containers]
+          dns = ["1.1.1.1", "8.8.8.8"]
+
+          [network]
+          default_rootless_network_cmd = "pasta"
+
+    - name: Ensure /etc/containers directory exists
+      ansible.builtin.file:
+        path: /etc/containers
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write /etc/containers/registries.conf
+      ansible.builtin.copy:
+        dest: /etc/containers/registries.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          unqualified-search-registries = ["docker.io", "ghcr.io", "quay.io"]
+
+    - name: Create project directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+      loop:
+        - "{{ project_root }}"
+        - "{{ deploy_dir }}"
+        - "{{ project_root }}/backups"
+
+    - name: Enable Podman socket for deploy user
+      ansible.builtin.systemd:
+        name: podman.socket
+        enabled: true
+        state: started
+        scope: user
+      become: true
+      become_user: "{{ deploy_user }}"
+
+    - name: Allow user services to run without login
+      ansible.builtin.command:
+        cmd: "loginctl enable-linger {{ deploy_user }}"
+      changed_when: false
+
+    - name: Bootstrap complete
+      ansible.builtin.debug:
+        msg: >
+          Rootless Podman is ready with pasta networking.
+          Run deploy-pod.yml to deploy the app.

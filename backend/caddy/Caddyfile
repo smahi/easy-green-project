@@ -12,10 +12,10 @@
     }
 }
 
-yourdomain.com {
+{$APP_DOMAIN} {
     import common
 
-    reverse_proxy app:8080 {
+    reverse_proxy 127.0.0.1:8080 {
         header_up X-Real-IP         {remote_host}
         header_up X-Forwarded-For   {remote_host}
         header_up X-Forwarded-Proto {scheme}
@@ -28,6 +28,6 @@ yourdomain.com {
     }
 }
 
-www.yourdomain.com {
-    redir https://yourdomain.com{uri} permanent
+www.{$APP_DOMAIN} {
+    redir https://{$APP_DOMAIN}{uri} permanent
 }

@@ -2,16 +2,13 @@
 # ansible/restore-backup.yml
 #
 # Optional recovery playbook. Restores a specific backend archive from the
-# control machine to the remote host, then rebuilds and verifies the stack.
+# control machine to the remote host, then rebuilds and verifies the pod stack.
 #
 # Usage:
 #   ansible-playbook ansible/restore-backup.yml -i ansible/inventory/staging.ini \
 #     -e restore_backup_file=ansible/backups/u24/easy-green-backend-u24-20260424T051901.tar.gz
 #   ansible-playbook ansible/restore-backup.yml -i ansible/inventory/production.ini \
 #     -e restore_backup_file=/absolute/path/to/backup.tar.gz
-#
-# This is not part of the normal deploy flow. Use it only for recovery or
-# rollback-to-backup scenarios.
 
 - name: Restore backend from a specific backup archive
   hosts: all
@@ -27,14 +24,49 @@
     restore_create_remote_rollback: true
     restore_include_env: false
     restore_healthcheck_url: "http://{{ ansible_host }}"
-    app_image: "myapp_app:latest"
-    compose_service_name: "podman-compose-myapp.service"
+
+    systemd_user_dir: "{{ ansible_env.HOME }}/.config/systemd/user"
     user_runtime_dir: "/run/user/{{ ansible_user_uid }}"
-    restore_recreate_containers:
-      - myapp_caddy_1
-      - myapp_scheduler_1
-      - myapp_queue_1
+    pod_service_name: "easy-green-pod.service"
+    legacy_compose_service_name: "podman-compose-myapp.service"
+
+    app_image: "easygreen-app:latest"
+    pod_name: "easygreen-pod"
+    db_container_name: "easygreen-db"
+    valkey_container_name: "easygreen-valkey"
+    app_container_name: "easygreen-app"
+    queue_container_name: "easygreen-queue"
+    scheduler_container_name: "easygreen-scheduler"
+    caddy_container_name: "easygreen-caddy"
+
+    db_volume_name: "easygreen-db-data"
+    valkey_volume_name: "easygreen-valkey-data"
+    caddy_data_volume_name: "easygreen-caddy-data"
+    caddy_config_volume_name: "easygreen-caddy-config"
+    app_storage_volume_name: "easygreen-app-storage"
+    app_bootstrap_cache_volume_name: "easygreen-app-bootstrap-cache"
+    pod_volume_names:
+      - "{{ db_volume_name }}"
+      - "{{ valkey_volume_name }}"
+      - "{{ caddy_data_volume_name }}"
+      - "{{ caddy_config_volume_name }}"
+      - "{{ app_storage_volume_name }}"
+      - "{{ app_bootstrap_cache_volume_name }}"
+
+    pod_publish_ports:
+      - "80:80"
+    pod_caddy_config: "caddy/Caddyfile.staging"
+    legacy_compose_containers:
       - myapp_app_1
+      - myapp_queue_1
+      - myapp_scheduler_1
+      - myapp_caddy_1
+      - myapp_db_1
+      - myapp_valkey_1
+    legacy_compose_networks:
+      - myapp_backend
+      - podman
+
     backup_exclude_patterns:
       - "backend/.agents"
       - "backend/.claude"
@@ -90,7 +122,7 @@
           - -lc
           - >
             set -euo pipefail &&
-            tar -tzf {{ restore_backup_local_path | quote }} backend/compose.yaml backend/artisan >/dev/null
+            tar -tzf {{ restore_backup_local_path | quote }} backend/docker/app.Dockerfile backend/artisan >/dev/null
       delegate_to: localhost
       become: false
       changed_when: false
@@ -171,10 +203,10 @@
             dest: "{{ restore_remote_temp_dir.stdout }}"
             remote_src: true
 
-        - name: Validate extracted archive contains compose file
+        - name: Validate extracted archive contains Dockerfile
           ansible.builtin.stat:
-            path: "{{ restore_remote_temp_dir.stdout }}/backend/compose.yaml"
-          register: restore_compose_stat
+            path: "{{ restore_remote_temp_dir.stdout }}/backend/docker/app.Dockerfile"
+          register: restore_dockerfile_stat
 
         - name: Validate extracted archive contains artisan entrypoint
           ansible.builtin.stat:
@@ -190,9 +222,9 @@
           ansible.builtin.fail:
             msg: >-
               Backup archive must extract a backend/ directory containing both
-              compose.yaml and artisan.
+              docker/app.Dockerfile and artisan.
           when:
-            - not restore_compose_stat.stat.exists or not restore_artisan_stat.stat.exists
+            - not restore_dockerfile_stat.stat.exists or not restore_artisan_stat.stat.exists
 
         - name: Ensure live .env exists before sanitized restore
           ansible.builtin.stat:
@@ -250,68 +282,19 @@
           register: restore_build_result
           changed_when: restore_build_result.rc == 0
 
-        - name: Ensure db and valkey are up after restore
-          ansible.builtin.command:
-            cmd: podman-compose up -d db valkey
-            chdir: "{{ deploy_dir }}"
+        - name: Recreate and start Podman pod stack after restore
+          ansible.builtin.include_tasks: tasks/pod_stack.yml
 
-        - name: Wait for PostgreSQL container to be running after restore
+        - name: Verify Laravel boots inside restored app container
           ansible.builtin.command:
-            cmd: podman inspect --format "{{ '{{' }}.State.Status{{ '}}' }}" myapp_db_1
-          register: restore_db_state
-          retries: 15
-          delay: 3
-          until: restore_db_state.stdout == "running"
-          changed_when: false
-
-        - name: Wait for PostgreSQL to be accepting connections after restore
-          ansible.builtin.command:
-            cmd: >
-              podman exec myapp_db_1
-              pg_isready -h localhost -p 5432
-          register: restore_pg_ready
-          retries: 20
-          delay: 3
-          until: restore_pg_ready.rc == 0
-          changed_when: false
-
-        - name: Remove app containers before starting restored stack
-          ansible.builtin.command:
-            cmd: "podman rm -f {{ item }}"
-            chdir: "{{ deploy_dir }}"
-          loop: "{{ restore_recreate_containers }}"
-          ignore_errors: true
-
-        - name: Start restored app containers
-          ansible.builtin.command:
-            cmd: podman-compose up -d app queue scheduler
-            chdir: "{{ deploy_dir }}"
-
-        - name: Ensure caddy is up after restore
-          ansible.builtin.command:
-            cmd: podman-compose up -d caddy
-            chdir: "{{ deploy_dir }}"
-
-        - name: Re-run compose systemd user service after restore
-          ansible.builtin.systemd:
-            name: "{{ compose_service_name }}"
-            enabled: true
-            state: restarted
-            scope: user
-            daemon_reload: true
-          environment:
-            XDG_RUNTIME_DIR: "{{ user_runtime_dir }}"
-
-        - name: Verify Laravel boots inside the restored app container
-          ansible.builtin.command:
-            cmd: podman exec myapp_app_1 php artisan --version
+            cmd: "podman exec {{ app_container_name }} php artisan --version"
             chdir: "{{ deploy_dir }}"
           register: restore_artisan_version
           changed_when: false
 
-        - name: Verify all restore-managed containers are running
+        - name: Verify expected pod containers are running
           ansible.builtin.command:
-            cmd: podman ps --format "{{ '{{' }}.Names{{ '}}' }}:{{ '{{' }}.Status{{ '}}' }}"
+            cmd: "podman ps --format {{ '{{' }}.Names{{ '}}' }}"
             chdir: "{{ deploy_dir }}"
           register: restore_ps
           changed_when: false
@@ -319,12 +302,12 @@
         - name: Assert expected containers are present after restore
           ansible.builtin.assert:
             that:
-              - "'myapp_db_1:Up' in restore_ps.stdout"
-              - "'myapp_valkey_1:Up' in restore_ps.stdout"
-              - "'myapp_app_1:Up' in restore_ps.stdout"
-              - "'myapp_queue_1:Up' in restore_ps.stdout"
-              - "'myapp_scheduler_1:Up' in restore_ps.stdout"
-              - "'myapp_caddy_1:Up' in restore_ps.stdout"
+              - "'{{ db_container_name }}' in restore_ps.stdout_lines"
+              - "'{{ valkey_container_name }}' in restore_ps.stdout_lines"
+              - "'{{ app_container_name }}' in restore_ps.stdout_lines"
+              - "'{{ queue_container_name }}' in restore_ps.stdout_lines"
+              - "'{{ scheduler_container_name }}' in restore_ps.stdout_lines"
+              - "'{{ caddy_container_name }}' in restore_ps.stdout_lines"
             fail_msg: "One or more expected containers are not running after restore."
 
         - name: Wait for restored app HTTP endpoint to respond
@@ -340,17 +323,12 @@
         - name: Show restore summary
           ansible.builtin.debug:
             msg: >-
-              Restore completed from {{ restore_backup_local_path }}.
-              HTTP {{ restore_smoke.status }} at {{ restore_healthcheck_url }}.
-              rollback_snapshot={{ restore_remote_rollback_path if restore_create_remote_rollback | bool else 'disabled' }}
+              Restore completed successfully from {{ restore_backup_local_path }}.
+              Remote rollback snapshot: {{
+                restore_remote_rollback_path if restore_create_remote_rollback | bool else 'disabled'
+              }}.
       always:
-        - name: Remove uploaded restore archive from remote host
-          ansible.builtin.file:
-            path: "{{ restore_remote_archive_path }}"
-            state: absent
-          when: restore_remote_archive_path is defined
-
-        - name: Remove temporary restore directory from remote host
+        - name: Remove temporary restore directory on remote host
           ansible.builtin.file:
             path: "{{ restore_remote_temp_dir.stdout }}"
             state: absent

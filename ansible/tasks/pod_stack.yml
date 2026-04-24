@@ -1,0 +1,271 @@
+- name: Ensure active Caddy config is selected
+  ansible.builtin.copy:
+    src: "{{ deploy_dir }}/{{ pod_caddy_config }}"
+    dest: "{{ deploy_dir }}/caddy/Caddyfile.active"
+    remote_src: true
+    mode: "0644"
+
+- name: Stop legacy Podman Compose systemd user service if present
+  ansible.builtin.systemd:
+    name: "{{ legacy_compose_service_name }}"
+    enabled: false
+    state: stopped
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "{{ user_runtime_dir }}"
+  failed_when: false
+
+- name: Remove legacy Podman Compose service file
+  ansible.builtin.file:
+    path: "{{ systemd_user_dir }}/{{ legacy_compose_service_name }}"
+    state: absent
+
+- name: Remove legacy Podman Compose containers if present
+  ansible.builtin.command:
+    cmd: "podman rm -f {{ item }}"
+    chdir: "{{ deploy_dir }}"
+  loop: "{{ legacy_compose_containers }}"
+  failed_when: false
+  changed_when: legacy_compose_rm.rc == 0
+  register: legacy_compose_rm
+
+- name: Remove legacy Podman Compose networks if present
+  ansible.builtin.command:
+    cmd: "podman network rm {{ item }}"
+    chdir: "{{ deploy_dir }}"
+  loop: "{{ legacy_compose_networks }}"
+  failed_when: false
+  changed_when: legacy_compose_network_rm.rc == 0
+  register: legacy_compose_network_rm
+
+- name: Remove existing Podman pod if present
+  ansible.builtin.command:
+    cmd: "podman pod rm -f {{ pod_name }}"
+    chdir: "{{ deploy_dir }}"
+  register: pod_rm
+  failed_when: false
+  changed_when: pod_rm.rc == 0
+
+- name: Ensure Podman volumes exist
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if ! podman volume exists {{ item }}; then
+      podman volume create {{ item }}
+      echo created
+    fi
+  args:
+    chdir: "{{ deploy_dir }}"
+    executable: /bin/bash
+  loop: "{{ pod_volume_names }}"
+  register: pod_volume_create
+  changed_when: "'created' in pod_volume_create.stdout"
+
+- name: Create application pod with pasta networking
+  ansible.builtin.command:
+    cmd: >-
+      podman pod create
+      --name {{ pod_name }}
+      --infra-name {{ pod_name }}-infra
+      --network pasta
+      {% for published_port in pod_publish_ports %}--publish {{ published_port }} {% endfor %}
+    chdir: "{{ deploy_dir }}"
+
+- name: Create PostgreSQL container in pod
+  ansible.builtin.shell: |
+    set -euo pipefail
+    set -a
+    source "{{ deploy_dir }}/.env"
+    set +a
+    podman create \
+      --name "{{ db_container_name }}" \
+      --pod "{{ pod_name }}" \
+      --restart unless-stopped \
+      --env POSTGRES_DB="$DB_DATABASE" \
+      --env POSTGRES_USER="$DB_USERNAME" \
+      --env POSTGRES_PASSWORD="$DB_PASSWORD" \
+      --volume "{{ db_volume_name }}:/var/lib/postgresql" \
+      postgres:18-alpine
+  args:
+    chdir: "{{ deploy_dir }}"
+    executable: /bin/bash
+
+- name: Create Valkey container in pod
+  ansible.builtin.shell: |
+    set -euo pipefail
+    set -a
+    source "{{ deploy_dir }}/.env"
+    set +a
+    podman create \
+      --name "{{ valkey_container_name }}" \
+      --pod "{{ pod_name }}" \
+      --restart unless-stopped \
+      --env VALKEY_PASSWORD="$VALKEY_PASSWORD" \
+      --volume "{{ valkey_volume_name }}:/data" \
+      valkey/valkey:8-alpine \
+      sh -lc 'exec valkey-server --save 60 1 --loglevel warning --bind 127.0.0.1 --requirepass "$VALKEY_PASSWORD"'
+  args:
+    chdir: "{{ deploy_dir }}"
+    executable: /bin/bash
+
+- name: Start PostgreSQL and Valkey containers
+  ansible.builtin.command:
+    cmd: "podman start {{ db_container_name }} {{ valkey_container_name }}"
+    chdir: "{{ deploy_dir }}"
+
+- name: Wait for PostgreSQL to accept connections inside pod
+  ansible.builtin.command:
+    cmd: "podman exec {{ db_container_name }} pg_isready -h 127.0.0.1 -p 5432"
+    chdir: "{{ deploy_dir }}"
+  register: pod_pg_ready
+  retries: 20
+  delay: 3
+  until: pod_pg_ready.rc == 0
+  changed_when: false
+
+- name: Wait for Valkey to accept commands inside pod
+  ansible.builtin.command:
+    cmd: "podman exec {{ valkey_container_name }} sh -lc 'valkey-cli -a \"$VALKEY_PASSWORD\" ping'"
+    chdir: "{{ deploy_dir }}"
+  register: pod_valkey_ready
+  retries: 20
+  delay: 3
+  until: pod_valkey_ready.rc == 0
+  changed_when: false
+
+- name: Create app container in pod
+  ansible.builtin.command:
+    argv:
+      - podman
+      - create
+      - --name
+      - "{{ app_container_name }}"
+      - --pod
+      - "{{ pod_name }}"
+      - --restart
+      - unless-stopped
+      - --env-file
+      - "{{ deploy_dir }}/.env"
+      - --env
+      - SERVER_NAME=:8080
+      - --volume
+      - "{{ app_storage_volume_name }}:/var/www/html/storage"
+      - --volume
+      - "{{ app_bootstrap_cache_volume_name }}:/var/www/html/bootstrap/cache"
+      - "{{ app_image }}"
+    chdir: "{{ deploy_dir }}"
+
+- name: Create queue worker container in pod
+  ansible.builtin.command:
+    argv:
+      - podman
+      - create
+      - --name
+      - "{{ queue_container_name }}"
+      - --pod
+      - "{{ pod_name }}"
+      - --restart
+      - unless-stopped
+      - --env-file
+      - "{{ deploy_dir }}/.env"
+      - --volume
+      - "{{ app_storage_volume_name }}:/var/www/html/storage"
+      - --volume
+      - "{{ app_bootstrap_cache_volume_name }}:/var/www/html/bootstrap/cache"
+      - "{{ app_image }}"
+      - php
+      - artisan
+      - queue:work
+      - --sleep=3
+      - --tries=3
+      - --max-time=3600
+    chdir: "{{ deploy_dir }}"
+
+- name: Create scheduler container in pod
+  ansible.builtin.command:
+    argv:
+      - podman
+      - create
+      - --name
+      - "{{ scheduler_container_name }}"
+      - --pod
+      - "{{ pod_name }}"
+      - --restart
+      - unless-stopped
+      - --env-file
+      - "{{ deploy_dir }}/.env"
+      - --volume
+      - "{{ app_storage_volume_name }}:/var/www/html/storage"
+      - --volume
+      - "{{ app_bootstrap_cache_volume_name }}:/var/www/html/bootstrap/cache"
+      - "{{ app_image }}"
+      - php
+      - artisan
+      - schedule:work
+    chdir: "{{ deploy_dir }}"
+
+- name: Create Caddy container in pod
+  ansible.builtin.command:
+    argv:
+      - podman
+      - create
+      - --name
+      - "{{ caddy_container_name }}"
+      - --pod
+      - "{{ pod_name }}"
+      - --restart
+      - unless-stopped
+      - --env
+      - APP_DOMAIN={{ app_url_domain }}
+      - --volume
+      - "{{ deploy_dir }}/caddy/Caddyfile.active:/etc/caddy/Caddyfile:ro"
+      - --volume
+      - "{{ caddy_data_volume_name }}:/data"
+      - --volume
+      - "{{ caddy_config_volume_name }}:/config"
+      - caddy:2-alpine
+    chdir: "{{ deploy_dir }}"
+
+- name: Start application containers in pod
+  ansible.builtin.command:
+    cmd: >-
+      podman start
+      {{ app_container_name }}
+      {{ queue_container_name }}
+      {{ scheduler_container_name }}
+      {{ caddy_container_name }}
+    chdir: "{{ deploy_dir }}"
+
+- name: Ensure user systemd directory exists
+  ansible.builtin.file:
+    path: "{{ systemd_user_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Install systemd user unit for Podman pod
+  ansible.builtin.copy:
+    dest: "{{ systemd_user_dir }}/{{ pod_service_name }}"
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Easy Green Podman pod
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/bin/podman pod start {{ pod_name }}
+      ExecStop=/usr/bin/podman pod stop -t 20 {{ pod_name }}
+      TimeoutStartSec=0
+
+      [Install]
+      WantedBy=default.target
+
+- name: Enable Podman pod user service
+  ansible.builtin.systemd:
+    name: "{{ pod_service_name }}"
+    enabled: true
+    scope: user
+    daemon_reload: true
+  environment:
+    XDG_RUNTIME_DIR: "{{ user_runtime_dir }}"

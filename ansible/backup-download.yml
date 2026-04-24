@@ -10,7 +10,7 @@
 #   ansible-playbook ansible/backup-download.yml -i ansible/inventory/staging.ini -e backup_include_env=true
 #
 # Primary workflow:
-#   harden.yml -> reboot -> bootstrap-compose.yml -> deploy-compose.yml
+#   harden.yml -> reboot -> bootstrap-pod.yml -> deploy-pod.yml
 #   backup-download.yml is run later only when a local backup is needed.
 
 - name: Backup deployed backend and download it locally

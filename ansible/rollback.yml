@@ -2,7 +2,7 @@
 # ansible/rollback.yml
 #
 # Legacy rollback helper for the older release/symlink deployment model.
-# It is not part of the current Podman Compose workflow documented in
+# It is not part of the current Podman pod workflow documented in
 # ansible/README.md. Prefer restore-backup.yml for the current setup unless
 # you intentionally maintain the previous release-based layout.
 #

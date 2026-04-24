@@ -2,7 +2,7 @@
 # ansible/harden.yml
 #
 # One-time host hardening. Run this first on any fresh staging or production
-# server, then reboot before running bootstrap-compose.yml.
+# server, then reboot before running bootstrap-pod.yml.
 #
 # Usage:
 #   ansible-playbook ansible/harden.yml -i ansible/inventory/staging.ini
@@ -26,8 +26,8 @@
 #
 # Notes:
 #   - Run as a sudo-capable user.
-#   - This playbook manages /tmp through systemd tmp.mount rather than a raw
-#     mount remount command.
+#   - This playbook manages /tmp through a dedicated systemd tmp.mount unit
+#     rather than a raw mount remount command.
 #   - Review the SSH vars below before running on a remote host.
 
 - name: Harden VPS security
@@ -271,40 +271,39 @@
         - { name: net.ipv4.ip_unprivileged_port_start,        value: "80" }
 
     # ── 7. Filesystem hardening ───────────────────────────────────────────────
-    # Ubuntu 22.04+ manages /tmp via systemd-tmpfiles — using ansible.posix.mount
-    # on an already-active tmpfs causes deserialization errors. The correct approach
-    # is a systemd drop-in that overrides the mount options.
-
-    - name: Create systemd drop-in directory for tmp.mount
-      ansible.builtin.file:
-        path: /etc/systemd/system/tmp.mount.d
-        state: directory
-        mode: "0755"
-        owner: root
-        group: root
-
-    - name: Harden /tmp via systemd drop-in (noexec, nosuid, nodev)
+    # Manage /tmp with a dedicated systemd mount unit so hosts without a
+    # vendor-provided tmp.mount still get a consistent hardened tmpfs mount.
+    - name: Install tmp.mount unit for hardened /tmp
       ansible.builtin.copy:
-        dest: /etc/systemd/system/tmp.mount.d/hardening.conf
+        dest: /etc/systemd/system/tmp.mount
         mode: "0644"
         owner: root
         group: root
         content: |
+          [Unit]
+          Description=Temporary Directory /tmp
+          Documentation=man:hier(7)
+          Before=local-fs.target umount.target
+          ConditionPathIsSymbolicLink=!/tmp
+          DefaultDependencies=no
+          Conflicts=umount.target
+          After=swap.target
+
           [Mount]
+          What=tmpfs
+          Where=/tmp
+          Type=tmpfs
           Options=mode=1777,strictatime,nosuid,nodev,noexec,size=512M
-      register: tmp_mount_dropin
 
-    - name: Reload systemd for tmp.mount changes
-      ansible.builtin.systemd:
-        daemon_reload: true
-      when: tmp_mount_dropin.changed
+          [Install]
+          WantedBy=local-fs.target
+      register: tmp_mount_unit
 
-    - name: Enable and restart tmp.mount to apply /tmp options
-      ansible.builtin.systemd:
-        name: tmp.mount
-        enabled: true
-        state: restarted
-      when: tmp_mount_dropin.changed
+    - name: Reload systemd and enable tmp.mount using raw commands
+      ansible.builtin.raw: |
+        systemctl daemon-reload
+        systemctl enable --now tmp.mount
+      when: tmp_mount_unit.changed
 
     - name: Harden /dev/shm via fstab entry
       ansible.builtin.lineinfile:

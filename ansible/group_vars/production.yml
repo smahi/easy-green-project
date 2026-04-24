@@ -4,5 +4,10 @@ app_debug: false
 app_log_level: "error"
 caddy_admin_email: "admin@easygreen.dz"
 caddy_tls_mode: "letsencrypt"
+pod_publish_ports:
+  - "80:80"
+  - "443:443"
+  - "443:443/udp"
+pod_caddy_config: "caddy/Caddyfile"
 
 backups_enabled: true
