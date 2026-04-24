@@ -1,150 +1,169 @@
-# EASY GREEN — Ansible Deployment
+# EASY GREEN - Ansible Operations
 
-## Stack
+Single-source guide for provisioning, deploying, backing up, and restoring the
+Easy Green backend.
 
-| Component | Choice |
-|-----------|--------|
-| Reverse Proxy | **Caddy** (auto TLS via Let's Encrypt) |
-| PHP Runtime | **PHP 8.5-FPM** (Laravel + Filament 5 extensions) |
-| Framework | **Laravel 12 + Filament 5** |
-| Database | **PostgreSQL 18+** |
-| Cache / Queue | **Valkey** (Redis-compatible, drop-in) |
-| Queue Workers | **Supervisor** |
-| Asset Build | **Node.js 22 + Vite** |
+## Playbooks
 
-## Directory Structure
-
-```
+```text
 ansible/
-├── bootstrap-compose.yml   # One-time Podman/bootstrap setup
-├── backup-download.yml     # Archive deployed app and fetch it locally
-├── restore-backup.yml      # Restore a specific backup and verify the app
-├── deploy-compose.yml      # Main backend deploy playbook
+├── harden.yml              # One-time host hardening
+├── bootstrap-compose.yml   # One-time Podman/rootless setup
+├── deploy-compose.yml      # Main app deploy playbook
+├── backup-download.yml     # Download a sanitized backend backup
+├── restore-backup.yml      # Restore a selected backend backup
+├── rollback.yml            # Existing rollback helper
 ├── inventory/
-│   ├── staging.ini         # u24 multipass VM
-│   └── production.ini      # VPS
+│   ├── staging.ini
+│   └── production.ini
 ├── group_vars/
-│   ├── all.yml             # Shared variables
-│   ├── staging.yml         # Staging overrides
-│   └── production.yml      # Production overrides
-├── roles/
-│   ├── system/             # Hardening, firewall, fail2ban, deploy user
-│   ├── postgresql/         # PG18+ install + DB + user
-│   ├── valkey/             # Valkey install + password config
-│   ├── php/                # PHP-FPM 8.5 + extensions + pool
-│   ├── caddy/              # Caddy install + Caddyfile (auto TLS)
-│   ├── node/               # Node.js 22 + npm install + vite build
-│   ├── laravel/            # Git checkout, .env, migrate, permissions
-│   ├── supervisor/         # Queue workers (artisan queue:work)
-│   └── backups/            # pg_dump cron + rotation
-├── vault.yml               # Encrypted secrets (DB pass, SMTP, etc.)
-└── README.md               # This file
+├── vault.yml
+└── README.md
 ```
 
 ## Prerequisites
 
 ```bash
 sudo apt install ansible python3-argcomplete
+ansible-galaxy collection install community.general ansible.posix
 ```
 
-## Setup
-
-### 1. Configure Vault Secrets
-
-```bash
-# Edit vault.yml with your real secrets
-vim ansible/vault.yml
-
-# Encrypt it with ansible-vault
-ansible-vault encrypt ansible/vault.yml
-# You'll be prompted for a vault password
-```
-
-Or create a vault password file:
+Optional vault password file:
 
 ```bash
 echo "your_vault_password" > ~/.ansible_vault_pass
 chmod 600 ~/.ansible_vault_pass
 ```
 
-### 2. Edit Inventory
+## Setup
+
+1. Edit `ansible/vault.yml` with real secrets, then encrypt it if needed.
+2. Verify the inventory you want to target.
+3. Generate an app key locally and store it in the vault.
 
 ```bash
-# Staging is pre-configured for the u24 multipass VM
-cat ansible/inventory/staging.ini
-
-# For production, update production.ini with your real details
-vim ansible/inventory/production.ini
-```
-
-### 3. Update Vault Secrets
-
-```bash
-# Generate an APP_KEY locally
-cd backend && php artisan key:generate --show
-
-# Edit the vault to set real values
 ansible-vault edit ansible/vault.yml
+cd backend && php artisan key:generate --show
 ```
 
-## Usage
+## Run Order
 
-### Full deployment (infra + app)
+For a fresh server, run the playbooks in this order:
+
+```text
+harden.yml -> reboot -> bootstrap-compose.yml -> deploy-compose.yml
+```
+
+Staging example:
 
 ```bash
-# Staging
+ansible-playbook -i ansible/inventory/staging.ini ansible/harden.yml
+ansible staging -i ansible/inventory/staging.ini -m reboot
+ansible-playbook -i ansible/inventory/staging.ini ansible/bootstrap-compose.yml
 ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml
+```
 
-# Production
+Production example:
+
+```bash
+ansible-playbook -i ansible/inventory/production.ini ansible/harden.yml
+ansible production -i ansible/inventory/production.ini -m reboot
+ansible-playbook -i ansible/inventory/production.ini ansible/bootstrap-compose.yml
 ansible-playbook -i ansible/inventory/production.ini ansible/deploy-compose.yml
 ```
 
-### Infra only (first time setup)
-
-```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/bootstrap-compose.yml
-```
-
-### App deploy only (code updates, after infra is set up)
+For later application releases, run only:
 
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml
 ```
 
-### Download an app backup to the control machine
+## What Each Playbook Does
+
+### `harden.yml`
+
+Run once before anything else on a new host.
+
+- updates packages
+- hardens SSH
+- configures UFW and Fail2ban
+- applies sysctl settings
+- hardens `/tmp` and `/dev/shm`
+- enables unattended upgrades, auditd, and other baseline protections
+
+Note: `/tmp` is managed through `systemd` `tmp.mount`. The playbook reloads
+`systemd` and restarts `tmp.mount` when the drop-in changes, instead of calling
+`mount -o remount /tmp`.
+
+### `bootstrap-compose.yml`
+
+Run once after hardening.
+
+- installs `podman` and `podman-compose`
+- enables rootless low-port binding
+- writes container DNS configuration
+- creates project directories
+- enables the user Podman socket and linger
+
+### `deploy-compose.yml`
+
+Run on every deploy.
+
+- syncs `backend/` to the host
+- preserves the existing remote `.env`
+- builds the app image
+- starts or refreshes the Podman Compose stack
+- re-enables the user `systemd` service
+- smoke-tests the deployed app
+
+Useful tags:
+
+```bash
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml --tags build
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml --tags restart
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml --tags smoke
+```
+
+### `backup-download.yml`
+
+Run when you want a local copy of the deployed backend.
 
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/backup-download.yml
 ```
 
-This creates a sanitized `tar.gz` archive of `~/easy-green-project/backend` on
-the target, downloads it to `ansible/backups/<inventory_hostname>/`, and
-removes the remote archive afterward by default.
+Behavior:
 
-By default it excludes transient and sensitive-noise paths such as `.env`,
-editor/agent metadata, logs, framework caches, and `database/database.sqlite`.
-If you explicitly want the deployed `.env` included:
+- creates a sanitized archive on the remote host
+- downloads it to `ansible/backups/<inventory_hostname>/`
+- removes the temporary remote archive by default
+- excludes `.env` unless `backup_include_env=true`
+
+Include `.env` only when you explicitly want it:
 
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/backup-download.yml \
   -e backup_include_env=true
 ```
 
-### Restore a specific backup and verify the app
+### `restore-backup.yml`
+
+Run when you need to restore a downloaded backend archive.
 
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/restore-backup.yml \
   -e restore_backup_file=ansible/backups/u24/easy-green-backend-u24-20260424T051901.tar.gz
 ```
 
-Best-practice restore behavior:
-- validates the requested local archive before touching the server
-- creates a remote pre-restore rollback snapshot by default
-- preserves the live `.env` unless you explicitly restore a backup that includes it
-- rebuilds the app image and restarts the Podman Compose stack
-- verifies both `php artisan --version` and the HTTP endpoint after restore
+Behavior:
 
-If the backup archive already contains `.env` and you want to restore it too:
+- validates the selected local archive first
+- creates a pre-restore rollback snapshot remotely
+- restores the backend while preserving the live `.env` by default
+- rebuilds and restarts the stack
+- verifies artisan and HTTP health checks
+
+Restore the backup `.env` only if the archive contains one and you intend to use it:
 
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/restore-backup.yml \
@@ -152,56 +171,57 @@ ansible-playbook -i ansible/inventory/staging.ini ansible/restore-backup.yml \
   -e restore_include_env=true
 ```
 
-### Dry run (check mode)
+## Inventories
+
+`ansible/inventory/staging.ini` targets the Multipass VM.
+
+`ansible/inventory/production.ini` targets the production VPS.
+
+If you change the SSH port in `harden.yml`, update the inventory host entry to
+match.
+
+## Common Operations
+
+Connectivity check:
 
 ```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml --check --diff
+ansible staging -i ansible/inventory/staging.ini -m ping
 ```
 
-## Deployment Flow (Capistrano-style)
-
-```
-/var/www/easy-green/
-├── releases/
-│   ├── 20260414T120000/    ← current release (symlink target)
-│   ├── 20260414T115500/    ← previous release
-│   └── ...
-├── shared/
-│   ├── storage/            ← persistent storage (linked)
-│   └── bootstrap/cache/    ← persistent cache (linked)
-└── current -> releases/20260414T120000/   ← active release
-```
-
-Old releases beyond the 5 most recent are automatically cleaned up.
-
-## Restore Snapshot (Staging)
-
-If you need a clean VM to re-test the playbook:
+Remote artisan command:
 
 ```bash
-multipass restore u24 --name <snapshot_name>
+ansible staging -i ansible/inventory/staging.ini -m command \
+  -a "podman exec myapp_app_1 php artisan migrate:status" \
+  --become=false
 ```
 
-## Variables Reference
+Tail app logs:
 
-### `group_vars/all.yml` (shared)
+```bash
+ansible staging -i ansible/inventory/staging.ini -m command \
+  -a "podman logs --tail=50 myapp_app_1" \
+  --become=false
+```
 
-| Variable | Description |
-|----------|-------------|
-| `app_repo` | Git URL for the Laravel backend |
-| `app_branch` | Branch to deploy |
-| `app_deploy_user` | System user for deployment |
-| `app_url_domain` | Domain name for Caddy TLS |
-| `db_name` / `db_user` / `db_password` | PostgreSQL credentials |
-| `valkey_host` / `valkey_password` | Valkey credentials |
-| `php_version` | PHP version (default 8.5) |
-| `queue_workers` | Number of queue worker processes |
-| `backup_retention_days` | How many days to keep backups |
+## Troubleshooting
 
-### Environment-specific (`staging.yml` / `production.yml`)
+`community.general.ufw` or `ansible.posix` missing:
 
-| Variable | Staging | Production |
-|----------|---------|------------|
-| `app_debug` | `true` | `false` |
-| `caddy_tls_mode` | `internal` (self-signed) | `letsencrypt` |
-| `backups_enabled` | `false` | `true` |
+```bash
+ansible-galaxy collection install community.general ansible.posix
+```
+
+`rsync` missing on target:
+
+```bash
+ansible staging -i ansible/inventory/staging.ini -m apt \
+  -a "name=rsync state=present" --become
+```
+
+Smoke test fails after deploy:
+
+```bash
+ssh -i ~/.ssh/id_rsa_multipass ubuntu@10.250.127.182 \
+  "podman logs myapp_app_1 --tail=50"
+```
