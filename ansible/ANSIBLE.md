@@ -14,8 +14,7 @@ easy-green-project/
     ├── harden.yml              ← Step 1: one-time VPS security hardening
     ├── bootstrap-compose.yml   ← Step 2: one-time Podman setup
     ├── deploy-compose.yml      ← Step 3: run on every deploy
-    ├── deploy.yml              ← existing deploy playbook
-    ├── bootstrap.yml           ← existing bootstrap playbook
+    ├── backup-download.yml     ← Step 4: archive backend and fetch locally
     ├── rollback.yml            ← existing rollback playbook
     ├── vault.yml               ← Ansible Vault secrets
     ├── inventory/
@@ -175,6 +174,18 @@ ansible-playbook ansible/deploy-compose.yml -i ansible/inventory/staging.ini
 ```bash
 ansible-playbook ansible/deploy-compose.yml -i ansible/inventory/staging.ini
 ```
+
+### Download a backend backup to the control machine
+
+```bash
+ansible-playbook ansible/backup-download.yml -i ansible/inventory/staging.ini
+```
+
+What it does:
+- Archives `~/easy-green-project/backend` on the remote host as a `tar.gz`
+- Stores the temporary archive in `~/easy-green-project/backups/`
+- Fetches it to `ansible/backups/<inventory_hostname>/` on the control machine
+- Deletes the remote archive after download unless `cleanup_remote_backup=false`
 
 ### Deploy to production
 

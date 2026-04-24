@@ -1,0 +1,70 @@
+---
+# ansible/backup-download.yml
+#
+# Archives the deployed backend directory on the target host and fetches the
+# resulting tar.gz archive back to the Ansible control machine.
+#
+# Usage:
+#   ansible-playbook ansible/backup-download.yml -i ansible/inventory/staging.ini
+
+- name: Backup deployed backend and download it locally
+  hosts: all
+  become: false
+  gather_facts: true
+
+  vars:
+    project_root: "{{ ansible_env.HOME }}/easy-green-project"
+    deploy_dir: "{{ project_root }}/backend"
+    remote_backup_dir: "{{ project_root }}/backups"
+    backup_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+    backup_filename: "easy-green-backend-{{ inventory_hostname }}-{{ backup_timestamp }}.tar.gz"
+    remote_backup_path: "{{ remote_backup_dir }}/{{ backup_filename }}"
+    local_backup_dir: "{{ playbook_dir }}/backups/{{ inventory_hostname }}"
+    cleanup_remote_backup: true
+
+  tasks:
+    - name: Check deployed backend directory exists
+      ansible.builtin.stat:
+        path: "{{ deploy_dir }}"
+      register: deploy_dir_stat
+
+    - name: Fail if deployed backend directory is missing
+      ansible.builtin.fail:
+        msg: "Deployed backend directory not found at {{ deploy_dir }}"
+      when: not deploy_dir_stat.stat.exists
+
+    - name: Ensure remote backup directory exists
+      ansible.builtin.file:
+        path: "{{ remote_backup_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Create compressed backend archive on remote host
+      ansible.builtin.archive:
+        path: "{{ deploy_dir }}"
+        dest: "{{ remote_backup_path }}"
+        format: gz
+
+    - name: Ensure local backup directory exists
+      ansible.builtin.file:
+        path: "{{ local_backup_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      become: false
+
+    - name: Download backend archive to the control machine
+      ansible.builtin.fetch:
+        src: "{{ remote_backup_path }}"
+        dest: "{{ local_backup_dir }}/"
+        flat: true
+
+    - name: Remove remote archive after download
+      ansible.builtin.file:
+        path: "{{ remote_backup_path }}"
+        state: absent
+      when: cleanup_remote_backup | bool
+
+    - name: Show local backup path
+      ansible.builtin.debug:
+        msg: "Backup downloaded to {{ local_backup_dir }}/{{ backup_filename }}"

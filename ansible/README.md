@@ -17,6 +17,7 @@
 ```
 ansible/
 ├── bootstrap-compose.yml   # One-time Podman/bootstrap setup
+├── backup-download.yml     # Archive deployed app and fetch it locally
 ├── deploy-compose.yml      # Main backend deploy playbook
 ├── inventory/
 │   ├── staging.ini         # u24 multipass VM
@@ -108,6 +109,16 @@ ansible-playbook -i ansible/inventory/staging.ini ansible/bootstrap-compose.yml
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml
 ```
+
+### Download an app backup to the control machine
+
+```bash
+ansible-playbook -i ansible/inventory/staging.ini ansible/backup-download.yml
+```
+
+This creates a `tar.gz` archive of `~/easy-green-project/backend` on the target,
+downloads it to `ansible/backups/<inventory_hostname>/`, and removes the remote
+archive afterward by default.
 
 ### Dry run (check mode)
 
