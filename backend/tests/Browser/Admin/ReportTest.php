@@ -13,9 +13,9 @@ test('superuser can create a report', function () {
             ['email' => 'superuser_dusk@example.com'],
             ['password' => bcrypt('password'), 'name' => 'Super User']
         );
-        
+
         $role = Role::firstOrCreate(['name' => 'superuser', 'guard_name' => 'web']);
-        
+
         // Ensure permissions exist
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $permissions = [
@@ -28,7 +28,7 @@ test('superuser can create a report', function () {
             Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
         }
         $role->givePermissionTo($permissions);
-        
+
         $superuser->assignRole($role);
 
         // Create a ReportType to select

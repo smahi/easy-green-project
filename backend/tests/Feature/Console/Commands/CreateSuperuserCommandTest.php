@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\User;
-use Spatie\Permission\Models\Role;
+
 use function Pest\Laravel\artisan;
 use function Pest\Laravel\assertDatabaseHas;
 
@@ -28,8 +28,8 @@ it('can create a superuser using options', function () {
         '--email' => 'options@example.com',
         '--password' => 'password123',
     ])
-    ->expectsOutputToContain('Superuser created successfully.')
-    ->assertSuccessful();
+        ->expectsOutputToContain('Superuser created successfully.')
+        ->assertSuccessful();
 
     assertDatabaseHas('users', [
         'name' => 'Option Admin',

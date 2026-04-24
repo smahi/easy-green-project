@@ -41,17 +41,17 @@ class ReportTypeForm
                                     ->label(__('Description (French)')),
                             ]),
                     ]),
-                
+
                 Section::make(__('Settings'))
                     ->columns(2)
                     ->schema([
                         FileUpload::make('icon')
                             ->image()
                             ->directory('report-types-icons'),
-                        
+
                         ColorPicker::make('color')
                             ->required(),
-                            
+
                         Select::make('severity_level')
                             ->options([
                                 1 => __('Low'),
@@ -62,7 +62,7 @@ class ReportTypeForm
                             ])
                             ->required()
                             ->default(1),
-                            
+
                         Toggle::make('is_active')
                             ->default(true),
                     ]),

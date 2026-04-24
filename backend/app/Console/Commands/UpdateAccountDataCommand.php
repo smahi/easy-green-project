@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
+
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
 
@@ -38,6 +39,7 @@ class UpdateAccountDataCommand extends Command
 
         if (! $user) {
             $this->components->error("User with email [{$email}] not found.");
+
             return self::FAILURE;
         }
 
@@ -70,7 +72,7 @@ class UpdateAccountDataCommand extends Command
 
         $user->name = $name;
         $user->email = $newEmail;
-        
+
         if ($passwordInput !== '') {
             $user->password = Hash::make($passwordInput);
         }

@@ -1,18 +1,18 @@
 <?php
 
-use App\Filament\Resources\Users\UserResource;
 use App\Filament\Resources\Users\Pages\ListUsers;
+use App\Filament\Resources\Users\UserResource;
 use App\Models\User;
-use Spatie\Permission\Models\Role;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\PermissionRegistrar;
 use Livewire\Livewire;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 beforeEach(function () {
     $this->app->make(PermissionRegistrar::class)->forgetCachedPermissions();
-    
+
     $this->role = Role::firstOrCreate(['name' => 'superuser', 'guard_name' => 'web']);
-    
+
     $permissions = [
         'ViewAny:User',
         'Create:User',
@@ -44,7 +44,7 @@ it('can render user resource create page', function () {
 
 it('can render user resource edit page', function () {
     $userToEdit = User::factory()->create();
-    
+
     $this->actingAs($this->user)
         ->get(UserResource::getUrl('edit', ['record' => $userToEdit]))
         ->assertSuccessful();

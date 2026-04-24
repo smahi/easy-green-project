@@ -44,11 +44,10 @@ class ReportSeeder extends Seeder
                 'report_type_id' => $reportTypes->random()->id,
                 'latitude' => $lat,
                 'longitude' => $lng,
-                'description' => "Report from {$location['name']} area. " . fake()->sentence(),
+                'description' => "Report from {$location['name']} area. ".fake()->sentence(),
                 'created_at' => now()->subDays(rand(0, 30)),
                 'updated_at' => now()->subDays(rand(0, 30)),
             ]);
         }
     }
 }
-

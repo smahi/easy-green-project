@@ -1,16 +1,16 @@
 <?php
 
 use App\Models\User;
-use Spatie\Permission\Models\Role;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\PermissionRegistrar;
 use BezhanSalleh\FilamentShield\Resources\Roles\RoleResource;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 beforeEach(function () {
     $this->app->make(PermissionRegistrar::class)->forgetCachedPermissions();
-    
+
     $this->role = Role::firstOrCreate(['name' => 'superuser', 'guard_name' => 'web']);
-    
+
     $permissions = [
         'ViewAny:Role',
         'Create:Role',

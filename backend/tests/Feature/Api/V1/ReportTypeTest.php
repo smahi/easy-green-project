@@ -1,10 +1,11 @@
 <?php
 
-use App\Models\User;
 use App\Models\ReportType;
+use App\Models\User;
 use Spatie\Permission\Models\Role;
-use function Pest\Laravel\getJson;
+
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\getJson;
 
 beforeEach(function () {
     Role::firstOrCreate(['name' => 'farmer', 'guard_name' => 'web']);
@@ -24,17 +25,17 @@ it('allows authenticated users to fetch report types', function () {
     $response = actingAs($user, 'sanctum')->getJson('/api/v1/report-types');
 
     $response->assertStatus(200)
-             ->assertJsonCount(3, 'data')
-             ->assertJsonStructure([
-                 'data' => [
-                     '*' => [
-                         'id',
-                         'name',
-                         'severity_level',
-                         'icon',
-                         'color',
-                     ],
-                 ],
-                 'meta' => ['version'],
-             ]);
+        ->assertJsonCount(3, 'data')
+        ->assertJsonStructure([
+            'data' => [
+                '*' => [
+                    'id',
+                    'name',
+                    'severity_level',
+                    'icon',
+                    'color',
+                ],
+            ],
+            'meta' => ['version'],
+        ]);
 });

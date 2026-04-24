@@ -18,7 +18,7 @@ beforeEach(function () {
     // Ensure permissions exist and are assigned
     $createPermission = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Create:Report', 'guard_name' => 'web']);
     $farmerRole->givePermissionTo($createPermission);
-    
+
     app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 });
 
@@ -141,22 +141,22 @@ it('allows farmers to fetch their own report history', function () {
     $response = actingAs($farmer, 'sanctum')->getJson('/api/v1/reports');
 
     $response->assertStatus(200)
-             ->assertJsonCount(3, 'data')
-             ->assertJsonStructure([
-                 'data' => [
-                     '*' => [
-                         'id',
-                         'report_type' => ['id', 'name'],
-                         'description',
-                         'latitude',
-                         'longitude',
-                         'status',
-                     ]
-                 ],
-                 'meta',
-                 'links'
-             ]);
-    
+        ->assertJsonCount(3, 'data')
+        ->assertJsonStructure([
+            'data' => [
+                '*' => [
+                    'id',
+                    'report_type' => ['id', 'name'],
+                    'description',
+                    'latitude',
+                    'longitude',
+                    'status',
+                ],
+            ],
+            'meta',
+            'links',
+        ]);
+
     expect($response->json('data.0.description.en'))->toBe('Test description');
 });
 
@@ -179,17 +179,17 @@ it('allows farmers to sync multiple reports at once', function () {
                 'description' => 'Second offline report',
                 'latitude' => 36.2,
                 'longitude' => 3.2,
-            ]
-        ]
+            ],
+        ],
     ];
 
     $response = actingAs($farmer, 'sanctum')->postJson('/api/v1/reports/bulk', $payload);
 
     $response->assertStatus(201)
-             ->assertJson([
-                 'message' => 'Reports synchronized successfully',
-                 'count' => 2,
-             ]);
+        ->assertJson([
+            'message' => 'Reports synchronized successfully',
+            'count' => 2,
+        ]);
 
     expect(Report::where('user_id', $farmer->id)->count())->toBe(2);
 });
@@ -215,7 +215,7 @@ it('prevents duplicate reports using client_uuid (idempotency)', function () {
     // Second submission with same UUID
     $payload['description'] = 'Second attempt (retry)';
     actingAs($farmer, 'sanctum')->postJson('/api/v1/reports', $payload)->assertStatus(201);
-    
+
     // Count should still be 1
     expect(Report::count())->toBe(1);
     expect(Report::first()->getTranslation('description', 'en'))->toBe('Second attempt (retry)');
@@ -233,8 +233,8 @@ it('validates bulk report requests', function () {
     actingAs($farmer, 'sanctum')
         ->postJson('/api/v1/reports/bulk', [
             'reports' => [
-                ['description' => 'Missing fields']
-            ]
+                ['description' => 'Missing fields'],
+            ],
         ])
         ->assertStatus(422)
         ->assertJsonValidationErrors([

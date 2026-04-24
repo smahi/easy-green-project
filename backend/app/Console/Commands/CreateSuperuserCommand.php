@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
+
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
 
@@ -69,7 +70,7 @@ class CreateSuperuserCommand extends Command
         $user->assignRole($role);
 
         $this->components->info('Superuser created successfully.');
-        
+
         return self::SUCCESS;
     }
 }

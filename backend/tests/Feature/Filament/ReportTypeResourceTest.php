@@ -3,15 +3,15 @@
 use App\Filament\Resources\ReportTypes\ReportTypeResource;
 use App\Models\ReportType;
 use App\Models\User;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 beforeEach(function () {
     $this->app->make(PermissionRegistrar::class)->forgetCachedPermissions();
-    
+
     $this->role = Role::firstOrCreate(['name' => 'superuser', 'guard_name' => 'web']);
-    
+
     $permissions = [
         'ViewAny:ReportType',
         'Create:ReportType',
@@ -49,7 +49,7 @@ it('can render report type resource create page', function () {
 
 it('can create a report type', function () {
     $this->actingAs($this->user);
-    
+
     ReportType::create([
         'name' => ['en' => 'Locust', 'ar' => 'جراد', 'fr' => 'Criquet'],
         'severity_level' => 5,

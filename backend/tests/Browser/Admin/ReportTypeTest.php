@@ -2,8 +2,8 @@
 
 use App\Models\User;
 use Laravel\Dusk\Browser;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 test('superuser can create a report type', function () {
@@ -12,9 +12,9 @@ test('superuser can create a report type', function () {
             ['email' => 'superuser_dusk@example.com'],
             ['password' => bcrypt('password'), 'name' => 'Super User']
         );
-        
+
         $role = Role::firstOrCreate(['name' => 'superuser', 'guard_name' => 'web']);
-        
+
         // Ensure permissions exist
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $permissions = [
@@ -27,7 +27,7 @@ test('superuser can create a report type', function () {
             Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
         }
         $role->givePermissionTo($permissions);
-        
+
         $superuser->assignRole($role);
 
         $browser->loginAs($superuser)

@@ -2,8 +2,8 @@
 
 namespace App\Providers;
 
-use BezhanSalleh\LanguageSwitch\LanguageSwitch;
 use App\Policies\RolePolicy;
+use BezhanSalleh\LanguageSwitch\LanguageSwitch;
 use Carbon\CarbonImmutable;
 use Filament\Forms\Components\Field;
 use Filament\Tables\Columns\Column;

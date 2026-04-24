@@ -42,7 +42,7 @@ class AdminPanelProvider extends PanelProvider
                 // Removed AccountWidget and FilamentInfoWidget
             ])
             ->plugins([
-                \BezhanSalleh\FilamentShield\FilamentShieldPlugin::make()
+                \BezhanSalleh\FilamentShield\FilamentShieldPlugin::make(),
             ])
             ->middleware([
                 EncryptCookies::class,

@@ -29,6 +29,7 @@ class UserPolicy
         if ($model->hasRole('superuser')) {
             return false;
         }
+
         return $user->can('Update:User');
     }
 
@@ -37,6 +38,7 @@ class UserPolicy
         if ($model->hasRole('superuser')) {
             return false;
         }
+
         return $user->can('Delete:User');
     }
 
@@ -45,6 +47,7 @@ class UserPolicy
         if ($model->hasRole('superuser')) {
             return false;
         }
+
         return $user->can('Restore:User');
     }
 
@@ -53,6 +56,7 @@ class UserPolicy
         if ($model->hasRole('superuser')) {
             return false;
         }
+
         return $user->can('ForceDelete:User');
     }
 
@@ -71,6 +75,7 @@ class UserPolicy
         if ($model->hasRole('superuser')) {
             return false;
         }
+
         return $user->can('Replicate:User');
     }
 
