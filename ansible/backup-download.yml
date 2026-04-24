@@ -92,9 +92,7 @@
       ansible.builtin.set_fact:
         tar_data_args: "{{ tar_data_args | default([]) + ['-C', pod_data_dir, item] }}"
       loop: "{{ data_backup_includes }}"
-      when: (pod_data_dir + '/' + item) is ansible.builtin.path_exists
-      vars:
-        tar_data_args: []
+      when: (pod_data_dir ~ '/' ~ item) is exists
 
     - name: Create compressed backend archive with data on remote host
       ansible.builtin.shell: |
