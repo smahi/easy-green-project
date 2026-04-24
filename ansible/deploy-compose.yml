@@ -21,6 +21,9 @@
     # ── paths ────────────────────────────────────────────────────────────────
     project_root: "{{ ansible_env.HOME }}/easy-green-project"
     deploy_dir:   "{{ project_root }}/backend"
+    systemd_user_dir: "{{ ansible_env.HOME }}/.config/systemd/user"
+    compose_service_name: "podman-compose-myapp.service"
+    user_runtime_dir: "/run/user/{{ ansible_user_uid }}"
 
     # ── image ─────────────────────────────────────────────────────────────────
     app_image: "myapp_app:latest"
@@ -163,7 +166,48 @@
         chdir: "{{ deploy_dir }}"
       tags: [deploy]
 
-    # ── 7. smoke test ─────────────────────────────────────────────────────────
+    # ── 7. ensure compose stack auto-starts after reboot ─────────────────────
+    - name: Ensure user systemd directory exists
+      ansible.builtin.file:
+        path: "{{ systemd_user_dir }}"
+        state: directory
+        mode: "0755"
+      tags: [deploy]
+
+    - name: Install systemd user unit for the Podman Compose stack
+      ansible.builtin.copy:
+        dest: "{{ systemd_user_dir }}/{{ compose_service_name }}"
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Easy Green backend Podman Compose stack
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          WorkingDirectory={{ deploy_dir }}
+          ExecStart=/usr/bin/podman-compose up -d --remove-orphans
+          ExecStop=/usr/bin/podman-compose down
+          TimeoutStartSec=0
+
+          [Install]
+          WantedBy=default.target
+      tags: [deploy]
+
+    - name: Enable and start the compose systemd user service
+      ansible.builtin.systemd:
+        name: "{{ compose_service_name }}"
+        enabled: true
+        state: started
+        scope: user
+        daemon_reload: true
+      environment:
+        XDG_RUNTIME_DIR: "{{ user_runtime_dir }}"
+      tags: [deploy]
+
+    # ── 8. smoke test ─────────────────────────────────────────────────────────
     - name: Wait for app to respond on port 80
       ansible.builtin.uri:
         url: "http://{{ ansible_host }}"

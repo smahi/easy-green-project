@@ -109,6 +109,7 @@ Run **once** after hardening. Prepares the VM to run the compose stack:
 - Creates project directories (`~/easy-green-project/backend/`, `backups/`)
 - Enables the Podman socket as a user service
 - Enables linger so user services survive logout
+- Leaves deploy-time service registration to `deploy-compose.yml`
 
 ---
 
@@ -122,7 +123,8 @@ Run **on every deploy**. Syncs code, builds the image, and restarts containers:
 4. Brings up `db` + `valkey` if not already running, waits for PostgreSQL to be healthy
 5. Removes and recreates `app`, `queue`, `scheduler` containers from the fresh image
 6. Ensures `caddy` is up
-7. Smoke-tests `http://<vm-ip>` — fails the playbook if the app doesn't respond
+7. Installs and enables a `systemd --user` unit so `podman-compose up -d` is re-run automatically after every reboot
+8. Smoke-tests `http://<vm-ip>` — fails the playbook if the app doesn't respond
 
 The app container's entrypoint automatically runs on every start:
 - `php artisan migrate --force`

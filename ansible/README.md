@@ -16,7 +16,8 @@
 
 ```
 ansible/
-├── deploy.yml              # Main playbook
+├── bootstrap-compose.yml   # One-time Podman/bootstrap setup
+├── deploy-compose.yml      # Main backend deploy playbook
 ├── inventory/
 │   ├── staging.ini         # u24 multipass VM
 │   └── production.ini      # VPS
@@ -90,28 +91,28 @@ ansible-vault edit ansible/vault.yml
 
 ```bash
 # Staging
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy.yml --ask-vault-pass
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml
 
 # Production
-ansible-playbook -i ansible/inventory/production.ini ansible/deploy.yml --ask-vault-pass
+ansible-playbook -i ansible/inventory/production.ini ansible/deploy-compose.yml
 ```
 
 ### Infra only (first time setup)
 
 ```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy.yml --ask-vault-pass --tags "infra"
+ansible-playbook -i ansible/inventory/staging.ini ansible/bootstrap-compose.yml
 ```
 
 ### App deploy only (code updates, after infra is set up)
 
 ```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy.yml --ask-vault-pass --tags "deploy"
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml
 ```
 
 ### Dry run (check mode)
 
 ```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy.yml --ask-vault-pass --check --diff
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-compose.yml --check --diff
 ```
 
 ## Deployment Flow (Capistrano-style)
