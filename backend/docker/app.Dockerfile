@@ -74,6 +74,9 @@ COPY --from=composer --chown=www-data:www-data /app/vendor ./vendor
 
 # Built frontend assets from node stage
 COPY --from=node --chown=www-data:www-data /app/public/build ./public/build
+COPY --from=node --chown=www-data:www-data /app/public/css ./public/css
+COPY --from=node --chown=www-data:www-data /app/public/fonts ./public/fonts
+COPY --from=node --chown=www-data:www-data /app/public/js ./public/js
 
 # FrankenPHP inner Caddyfile
 COPY docker/Caddyfile /etc/caddy/Caddyfile

@@ -6,6 +6,8 @@ use App\Policies\RolePolicy;
 use BezhanSalleh\LanguageSwitch\LanguageSwitch;
 use Carbon\CarbonImmutable;
 use Filament\Forms\Components\Field;
+use Filament\Support\Assets\Css;
+use Filament\Support\Facades\FilamentAsset;
 use Filament\Tables\Columns\Column;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +35,10 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(Role::class, RolePolicy::class);
+
+        FilamentAsset::register([
+            Css::make('filament-custom', resource_path('css/filament-custom.css')),
+        ]);
 
         Field::configureUsing(function (Field $field): void {
             $field->translateLabel();

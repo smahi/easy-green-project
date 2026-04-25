@@ -27,8 +27,8 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->brandName('EASY GREEN')
-            ->brandLogo(asset('images/easy-green-logo.png'))
-            ->favicon(asset('images/easy-green-logo.png'))
+            ->brandLogo(asset('images/easy-green-logo-1254p.png'))
+            ->favicon(asset('images/easy-green-logo-1254p.png'))
             ->login()
             ->globalSearchKeyBindings(['command', 'k', 'ctrl', 'k'])
             ->colors([

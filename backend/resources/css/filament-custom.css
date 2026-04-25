@@ -1,8 +1,10 @@
-.fi-brand-icon,
-.w-fi-brand-icon,
+img.fi-logo,
+.fi-simple-header img,
 img[alt*="logo"],
-a[href*="/admin"] img {
-    width: 180px !important;
-    height: auto !important;
-    max-width: 180px !important;
+a[href*="/admin"] img,
+header img {
+    width: 130px !important;
+    height: 130px !important;
+    max-width: 130px !important;
+    min-width: 130px !important;
 }
