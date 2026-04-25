@@ -163,6 +163,8 @@
       - --env-file
       - "{{ deploy_dir }}/.env"
       - --env
+      - "TZ={{ app_timezone }}"
+      - --env
       - SERVER_NAME=:8080
       - --volume
       - "{{ app_storage_bind_path }}:/var/www/html/storage"
@@ -184,6 +186,8 @@
       - unless-stopped
       - --env-file
       - "{{ deploy_dir }}/.env"
+      - --env
+      - "TZ={{ app_timezone }}"
       - --volume
       - "{{ app_storage_bind_path }}:/var/www/html/storage"
       - --volume
@@ -210,6 +214,8 @@
       - unless-stopped
       - --env-file
       - "{{ deploy_dir }}/.env"
+      - --env
+      - "TZ={{ app_timezone }}"
       - --volume
       - "{{ app_storage_bind_path }}:/var/www/html/storage"
       - --volume
@@ -231,6 +237,8 @@
       - "{{ pod_name }}"
       - --restart
       - unless-stopped
+      - --env
+      - TZ="{{ app_timezone }}"
       - --env
       - APP_DOMAIN={{ app_url_domain }}
       - --volume

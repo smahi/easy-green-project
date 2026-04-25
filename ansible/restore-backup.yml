@@ -19,6 +19,7 @@
     project_root: "{{ ansible_env.HOME }}/easy-green-project"
     deploy_dir: "{{ project_root }}/backend"
     pod_data_dir: "{{ project_root }}/data"
+    app_timezone: "Africa/Algiers"
     remote_backup_dir: "{{ project_root }}/backups"
     restore_timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
     restore_remote_dir_prefix: "{{ remote_backup_dir }}/restore-"

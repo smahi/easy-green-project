@@ -20,6 +20,7 @@
     project_root: "/home/{{ deploy_user }}/easy-green-project"
     deploy_dir: "{{ project_root }}/backend"
     containers_conf_dir: "/home/{{ deploy_user }}/.config/containers"
+    app_timezone: "Africa/Algiers"
 
   tasks:
     - name: Install Podman and rootless networking dependencies
@@ -104,6 +105,28 @@
       ansible.builtin.command:
         cmd: "loginctl enable-linger {{ deploy_user }}"
       changed_when: false
+
+    - name: Set VM timezone
+      community.general.timezone:
+        name: "{{ app_timezone }}"
+
+    - name: Configure Podman containers timezone
+      ansible.builtin.copy:
+        dest: "{{ containers_conf_dir }}/timezone"
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0644"
+        content: |
+          {{ app_timezone }}
+
+    - name: Ensure /etc/local symlink exists
+      ansible.builtin.file:
+        path: /etc/local
+        state: link
+        owner: root
+        group: root
+        mode: "0777"
+        force: true
 
     - name: Bootstrap complete
       ansible.builtin.debug:
