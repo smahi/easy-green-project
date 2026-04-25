@@ -46,12 +46,12 @@
       - "backend/storage/framework/views"
       - "backend/bootstrap/cache"
     data_backup_includes:
-      - "data/db"
-      - "data/valkey"
-      - "data/caddy-data"
-      - "data/caddy-config"
-      - "data/app-storage"
-      - "data/app-bootstrap-cache"
+      - "db"
+      - "valkey"
+      - "caddy-data"
+      - "caddy-config"
+      - "app-storage"
+      - "app-bootstrap-cache"
 
   tasks:
     - name: Check deployed backend directory exists
@@ -84,30 +84,27 @@
             + ([] if backup_include_env | bool else ['backend/.env'])
           }}
 
-    - name: Build tar exclude arguments
-      ansible.builtin.set_fact:
-        tar_exclude_args: "{{ tar_exclude_args | default([]) + ['--exclude=' ~ item] }}"
-      loop: "{{ backup_archive_exclude_patterns }}"
-
-    - name: Build tar data directory arguments
-      ansible.builtin.set_fact:
-        tar_data_args: "{{ (tar_data_args | default([])) + ['-C', pod_data_dir, item] }}"
-      loop: "{{ data_backup_includes }}"
-      when: (pod_data_dir ~ '/' ~ item) is exists
-
-    - name: Initialize tar_data_args if no directories exist
-      ansible.builtin.set_fact:
-        tar_data_args: []
-      when: tar_data_args is not defined
-
     - name: Create compressed backend archive with data on remote host
       ansible.builtin.shell: |
         set -euo pipefail
         cd "{{ project_root }}"
         mkdir -p "{{ remote_backup_dir }}"
-        tar -czf "{{ remote_backup_path }}" {{ tar_exclude_args | join(' ') }} backend {{ tar_data_args | join(' ') }}
+
+        EXCLUDE_ARGS=""
+        for pattern in {{ backup_archive_exclude_patterns | map('quote') | join(' ') }}; do
+          EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude=$pattern"
+        done
+
+        DATA_DIRS=""
+        data_dirs="{{ data_backup_includes | join(' ') }}"
+        for dir in $data_dirs; do
+          if [ -d "{{ pod_data_dir }}/$dir" ]; then
+            DATA_DIRS="$DATA_DIRS -C {{ pod_data_dir }} $dir"
+          fi
+        done
+
+        tar -czf "{{ remote_backup_path }}" $EXCLUDE_ARGS backend $DATA_DIRS
       args:
-        chdir: "{{ project_root }}"
         executable: /bin/bash
 
     - name: Ensure local backup directory exists
