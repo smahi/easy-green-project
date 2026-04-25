@@ -78,15 +78,16 @@ ansible-playbook -i ansible/inventory/production.ini ansible/deploy-pod.yml
 
 ## Monitoring
 
-Beszel for VM host monitoring:
+Beszel for monitoring:
 
 ```bash
-# With key/token from Beszel UI (Settings → Tokens)
+# VM host metrics (binary agent - no socket)
 ansible-playbook -i ansible/inventory/staging.ini ansible/beszel-vm.yml \
-  -e beszel_key="ssh-ed25519 AAA..." -e beszel_token="xxx..."
+  -e beszel_key="..." -e beszel_token="..."
 
-ansible-playbook -i ansible/inventory/production.ini ansible/beszel-vm.yml \
-  -e beszel_key="ssh-ed25519 AAA..." -e beszel_token="xxx..."
+# Container metrics (read-only socket)
+ansible-playbook -i ansible/inventory/staging.ini ansible/beszel-containers.yml \
+  -e beszel_key="..." -e beszel_token="..."
 ```
 
 See [Beszel Guide](#beszel-vmyml) below for setup.
@@ -111,8 +112,7 @@ This project uses **Beszel** for VM host monitoring with a security-first approa
 
 ### What's NOT Monitored
 
-- Podman containers - Beszel doesn't support DB, requires socket (security risk)
-- Request feature: https://github.com/henrygd/beszel/issues
+- Podman containers - requires read-only socket (limited risk with :ro flag)
 
 - Podman containers - requires socket access (security trade-off)
 - Container monitoring in separate playbook
