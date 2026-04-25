@@ -90,6 +90,14 @@
       changed_when: false
       failed_when: false
 
+    - name: Fix data directory permissions before backup
+      ansible.builtin.shell: |
+        set -euo pipefail
+        chmod -R 755 "{{ pod_data_dir }}"/* 2>/dev/null || true
+      become: true
+      args:
+        executable: /bin/bash
+
     - name: Create compressed backend archive with data on remote host
       ansible.builtin.shell: |
         set -euo pipefail
