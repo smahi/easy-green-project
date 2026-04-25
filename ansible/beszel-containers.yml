@@ -1,41 +1,102 @@
 ---
 # ansible/beszel-containers.yml
 #
-# NOTE: Beszel does NOT support Podman DB monitoring.
-# It only supports socket-based container monitoring via the API.
+# Install Beszel agent for Podman container monitoring.
+# Monitors: Container CPU, RAM, network stats
 #
-# Security tradeoff: Requires read-only socket access
-# Alternative: Skip container monitoring (use VM playbook only)
+# Security: Read-only socket (ro) - agent can only READ stats, not control
+#
+# Prerequisites:
+#   1. Enable podman socket: systemctl --user enable podman.socket
+#   2. Get key/token from Beszel UI: Settings → Tokens
 #
 # Usage:
 #   ansible-playbook ansible/beszel-containers.yml -i ansible/inventory/staging.ini
-#     -e beszel_key="..." -e beszel_token="..."
-#
-# Or skip this and only use beszel-vm.yml for host metrics
+#     -e beszel_key="ssh-ed25519 AAA..." -e beszel_token="xxx..."
 
-- name: Install Beszel container monitoring (DISABLED)
+- name: Install Beszel container monitoring agent
   hosts: staging
   become: true
   gather_facts: false
 
   vars:
     deploy_user: ubuntu
+    beszel_agent_name: beszel-container-agent
+    beszel_data_dir: "/opt/beszel"
+    podman_socket: "/run/user/1000/podman/podman.sock"
 
   tasks:
-    - name: Display notice - Beszel does not support Podman DB
+    - name: Get user UID
+      ansible.builtin.command:
+        cmd: "id -u {{ deploy_user }}"
+      register: user_uid
+      changed_when: false
+
+    - name: Enable podman socket for user
+      become: true
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.command:
+        cmd: "systemctl --user enable podman.socket && systemctl --user start podman.socket"
+      changed_when: false
+      failed_when: false
+
+    - name: Check if podman socket exists
+      ansible.builtin.command:
+        cmd: "test -S {{ podman_socket }} && echo exists"
+      register: socket_check
+      changed_when: false
+      failed_when: false
+
+    - name: Stop existing container agent
+      become: true
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.command:
+        cmd: "podman stop {{ beszel_agent_name }} || true"
+      failed_when: false
+      changed_when: false
+
+    - name: Remove existing container agent
+      become: true
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.command:
+        cmd: "podman rm {{ beszel_agent_name }} || true"
+      failed_when: false
+      changed_when: false
+
+    - name: Start container agent with read-only socket
+      when: socket_check.stdout == "exists"
+      become: true
+      become_user: "{{ deploy_user }}"
+      block:
+        - name: Run agent with podman socket (read-only)
+          ansible.builtin.command:
+            cmd: >
+              podman run -d
+              --name {{ beszel_agent_name }}
+              --user {{ user_uid.stdout }}
+              --restart unless-stopped
+              --network host
+              -v {{ beszel_data_dir }}/container_agent_data:/var/lib/beszel-agent
+              -v {{ podman_socket }}:{{ podman_socket }}:ro
+              -e DOCKER_HOST=unix://{{ podman_socket }}
+              -e KEY={{ beszel_key }}
+              -e TOKEN={{ beszel_token }}
+              henrygd/beszel-agent:latest
+
+    - name: Display info
       ansible.builtin.debug:
         msg: |
           ================================================
-          CONTAINER MONITORING NOT AVAILABLE
+          Beszel container agent installed
           ================================================
 
-          Beszel does NOT support Podman DB for container monitoring.
-          It requires Podman socket API access which is a security risk.
+          Agent mounts podman socket as READ-ONLY (:ro)
+          Security: Agent can read stats, not control containers
 
-          Options:
-          1. Use beszel-vm.yml only (host metrics) - recommended
-          2. Request DB support from Beszel: github.com/henrygd/beszel/issues
+          To add containers in Beszel UI:
+          1. Go to Settings → Tokens (create if not exists)
+          2. Add System with this host
+          3. Agent connects to read-only socket for container stats
 
-          Current security approach:
-          - VM playbook: Binary agent, NO socket ✅
-          - Container playbook: Requires socket (not implemented)
+          Security: Read-only socket (:ro)
+          User: {{ deploy_user }} ({{ user_uid.stdout }})

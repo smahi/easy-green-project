@@ -14,7 +14,7 @@ ansible/
 ├── restore-backup.yml    # Restore a selected backend backup
 ├── rollback.yml          # Legacy release/symlink rollback helper
 ├── beszel-vm.yml           # Beszel VM host monitoring
-├── beszel-containers.yml  # DISABLED - requires socket (not secure)
+├── beszel-containers.yml  # Beszel Podman container monitoring
 ├── inventory/
 │   ├── staging.ini
 │   └── production.ini
