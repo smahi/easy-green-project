@@ -95,15 +95,7 @@
           EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude=$pattern"
         done
 
-        DATA_DIRS=""
-        data_dirs="{{ data_backup_includes | join(' ') }}"
-        for dir in $data_dirs; do
-          if [ -d "{{ pod_data_dir }}/$dir" ]; then
-            DATA_DIRS="$DATA_DIRS -C {{ pod_data_dir }} $dir"
-          fi
-        done
-
-        tar -czf "{{ remote_backup_path }}" $EXCLUDE_ARGS backend $DATA_DIRS
+        tar -czf "{{ remote_backup_path }}" $EXCLUDE_ARGS backend data
       args:
         executable: /bin/bash
 
