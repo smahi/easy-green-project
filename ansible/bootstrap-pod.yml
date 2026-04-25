@@ -119,15 +119,6 @@
         content: |
           {{ app_timezone }}
 
-    - name: Ensure /etc/local symlink exists
-      ansible.builtin.file:
-        path: /etc/local
-        state: link
-        owner: root
-        group: root
-        mode: "0777"
-        force: true
-
     - name: Bootstrap complete
       ansible.builtin.debug:
         msg: >
