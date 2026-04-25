@@ -276,12 +276,12 @@
           ansible.builtin.shell: |
             set -euo pipefail
             if [ -d "{{ restore_remote_temp_dir.stdout }}/data" ]; then
-              rsync -a --delete "{{ restore_remote_temp_dir.stdout }}/data/" "{{ pod_data_dir }}/"
+              rsync -a --delete --no-owner --no-group --chmod=755 "{{ restore_remote_temp_dir.stdout }}/data/" "{{ pod_data_dir }}/"
               echo "data_restored"
             elif [ -d "{{ restore_remote_temp_dir.stdout }}/db" ]; then
               for dir in db valkey caddy-data caddy-config app-storage app-bootstrap-cache; do
                 if [ -d "{{ restore_remote_temp_dir.stdout }}/$dir" ]; then
-                  rsync -a --delete "{{ restore_remote_temp_dir.stdout }}/$dir/" "{{ pod_data_dir }}/$dir/"
+                  rsync -a --delete --no-owner --no-group --chmod=755 "{{ restore_remote_temp_dir.stdout }}/$dir/" "{{ pod_data_dir }}/$dir/"
                 fi
               done
               echo "data_restored"
@@ -294,7 +294,8 @@
         - name: Ensure restored data directories have correct permissions
           ansible.builtin.shell: |
             set -euo pipefail
-            chmod 755 "{{ pod_data_dir }}"/* 2>/dev/null || true
+            chmod -R 755 "{{ pod_data_dir }}"/* 2>/dev/null || true
+          become: true
           args:
             executable: /bin/bash
           changed_when: false
