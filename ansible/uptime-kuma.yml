@@ -1,0 +1,102 @@
+---
+# ansible/uptime-kuma.yml
+#
+# Install Uptime Kuma for service monitoring.
+# Monitors: HTTP endpoints, SSL, API, ping, TCP ports
+#
+# Usage:
+#   ansible-playbook ansible/uptime-kuma.yml -i ansible/inventory/staging.ini
+#
+# Post-install:
+#   1. Open http://<VM-IP>:3001
+#   2. Create admin account
+#   3. Add monitors for Laravel app
+
+- name: Install Uptime Kuma monitoring
+  hosts: staging
+  become: true
+
+  vars:
+    deploy_user: ubuntu
+    uptime_kuma_port: 3001
+    uptime_kuma_data_dir: "/opt/uptime-kuma"
+
+  tasks:
+    - name: Create Uptime Kuma directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+      loop:
+        - "{{ uptime_kuma_data_dir }}"
+
+    - name: Check if Uptime Kuma exists
+      ansible.builtin.command:
+        cmd: "podman ps -a --filter name=uptime-kuma --format {{ '{{.Names}}' }}"
+      become: true
+      become_user: "{{ deploy_user }}"
+      register: kuma_exists
+      changed_when: false
+      failed_when: false
+
+    - name: Start Uptime Kuma
+      when: kuma_exists.stdout == ""
+      become: true
+      become_user: "{{ deploy_user }}"
+      block:
+        - name: Get Podman socket path
+          ansible.builtin.command:
+            cmd: "podman info --format '{{.Host.RemoteSocket.Path}}'"
+          register: podman_socket_path
+          changed_when: false
+
+        - name: Run Uptime Kuma container
+          ansible.builtin.command:
+            cmd: >
+              podman run -d
+              --name uptime-kuma
+              --restart unless-stopped
+              -p {{ uptime_kuma_port }}:3001
+              -v {{ uptime_kuma_data_dir }}:/app/data
+              -v {{ podman_socket_path.stdout }}:/var/run/docker.sock:Z
+              --cap-add NET_RAW
+              louislam/uptime-kuma:2
+
+    - name: Wait for Uptime Kuma
+      when: kuma_exists.stdout == ""
+      ansible.builtin.wait_for:
+        port: "{{ uptime_kuma_port }}"
+        host: 127.0.0.1
+        timeout: 120
+
+    - name: Allow port in firewall
+      community.general.ufw:
+        rule: allow
+        port: "{{ uptime_kuma_port }}"
+        comment: Uptime Kuma
+
+    - name: Display info
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+          Uptime Kuma installed
+          ================================================
+
+          URL: http://{{ ansible_host }}:{{ uptime_kuma_port }}
+
+          Setup in browser:
+          1. Open http://{{ ansible_host }}:{{ uptime_kuma_port }}
+          2. Create admin account
+          3. Configure Docker Host (Settings → Docker Hosts):
+             - Friendly Name: Podman Host
+             - Connection Type: Socket
+             - Docker Path: /var/run/docker.sock
+          4. Add monitors
+
+          Monitor types:
+          - HTTP(s): App URL
+          - Docker Container: Via Podman socket
+          - Keyword: Check for specific text
+          - SSL Certificate: Track expiry
