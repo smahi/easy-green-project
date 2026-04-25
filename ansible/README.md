@@ -13,6 +13,7 @@ ansible/
 ├── backup-download.yml   # Download a sanitized backend backup
 ├── restore-backup.yml    # Restore a selected backend backup
 ├── rollback.yml          # Legacy release/symlink rollback helper
+├── beszel-vm.yml        # Beszel monitoring (hub + agent)
 ├── inventory/
 │   ├── staging.ini
 │   └── production.ini
@@ -74,11 +75,48 @@ ansible-playbook -i ansible/inventory/production.ini ansible/bootstrap-pod.yml
 ansible-playbook -i ansible/inventory/production.ini ansible/deploy-pod.yml
 ```
 
-Later application releases:
+## Monitoring
+
+Beszel for VM host monitoring:
 
 ```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml
+# With key/token from Beszel UI (Settings → Tokens)
+ansible-playbook -i ansible/inventory/staging.ini ansible/beszel-vm.yml \
+  -e beszel_key="ssh-ed25519 AAA..." -e beszel_token="xxx..."
+
+ansible-playbook -i ansible/inventory/production.ini ansible/beszel-vm.yml \
+  -e beszel_key="ssh-ed25519 AAA..." -e beszel_token="xxx..."
 ```
+
+See [Beszel Guide](#beszel-vmyml) below for setup.
+
+## Monitoring Recommendations
+
+This project uses **Beszel** for VM host monitoring with a security-first approach.
+
+### Security Principles
+
+| Layer | Approach | Why |
+|-------|----------|-----|
+| Hub | Podman container | Easy to manage, rebuildable |
+| Agent | Binary (not container) | No container escape risk |
+| User | deploy_user (not root) | No privilege escalation |
+| Socket | None | VM metrics via system APIs only |
+
+### What's Monitored
+
+- Host CPU, RAM, disk usage, network I/O
+- System uptime, load average
+
+### What's NOT Monitored
+
+- Podman containers - requires socket (security tradeoff)
+- Container monitoring in separate playbook
+
+- Podman containers - requires socket access (security trade-off)
+- Container monitoring in separate playbook
+
+See: https://beszel.dev/guide/getting-started
 
 ## What Each Playbook Does
 
