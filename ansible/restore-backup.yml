@@ -287,6 +287,8 @@
           ansible.builtin.shell: |
             set -euo pipefail
             chmod 755 "{{ pod_data_dir }}"/* 2>/dev/null || true
+          args:
+            executable: /bin/bash
           changed_when: false
 
         - name: Build app image from restored backend
