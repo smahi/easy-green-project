@@ -266,21 +266,19 @@
               - "{{ deploy_dir }}/"
           when: restore_include_env | bool
 
-- name: Ensure data directories exist on remote host
-      ansible.builtin.file:
-        path: "{{ pod_data_dir }}"
-        state: directory
-        mode: "0755"
+        - name: Ensure data directories exist on remote host
+          ansible.builtin.file:
+            path: "{{ pod_data_dir }}"
+            state: directory
+            mode: "0755"
 
-    - name: Remove existing data directories before restore
-      ansible.builtin.shell: |
-        set -euo pipefail
-        rm -rf "{{ pod_data_dir }}"/{db,valkey,caddy-data,caddy-config,app-storage,app-bootstrap-cache}
-      become: true
-      args:
-        executable: /bin/bash
+        - name: Remove existing data directories before restore
+          ansible.builtin.command:
+            cmd: rm -rf {{ pod_data_dir }}/{db,valkey,caddy-data,caddy-config,app-storage,app-bootstrap-cache}
+          become: true
+          changed_when: false
 
-    - name: Restore persistent data directories from backup
+        - name: Restore persistent data directories from backup
           ansible.builtin.shell: |
             set -euo pipefail
             if [ -d "{{ restore_remote_temp_dir.stdout }}/data" ]; then
