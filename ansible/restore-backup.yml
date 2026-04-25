@@ -278,6 +278,20 @@
           become: true
           changed_when: false
 
+        - name: Recreate data directories as root
+          ansible.builtin.file:
+            path: "{{ pod_data_dir }}/{{ item }}"
+            state: directory
+            mode: "0755"
+          become: true
+          loop:
+            - db
+            - valkey
+            - caddy-data
+            - caddy-config
+            - app-storage
+            - app-bootstrap-cache
+
         - name: Restore persistent data directories from backup
           ansible.builtin.shell: |
             set -euo pipefail
