@@ -84,6 +84,12 @@
             + ([] if backup_include_env | bool else ['backend/.env'])
           }}
 
+    - name: Stop Podman pod for consistent backup
+      ansible.builtin.command:
+        cmd: podman pod stop easygreen-pod
+      changed_when: false
+      failed_when: false
+
     - name: Create compressed backend archive with data on remote host
       ansible.builtin.shell: |
         set -euo pipefail
@@ -98,6 +104,12 @@
         tar -czf "{{ remote_backup_path }}" $EXCLUDE_ARGS backend data
       args:
         executable: /bin/bash
+
+    - name: Restart Podman pod after backup
+      ansible.builtin.command:
+        cmd: podman pod start easygreen-pod
+      changed_when: false
+      failed_when: false
 
     - name: Ensure local backup directory exists
       ansible.builtin.file:
