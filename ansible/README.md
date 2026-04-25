@@ -13,7 +13,8 @@ ansible/
 ├── backup-download.yml   # Download a sanitized backend backup
 ├── restore-backup.yml    # Restore a selected backend backup
 ├── rollback.yml          # Legacy release/symlink rollback helper
-├── beszel-vm.yml        # Beszel monitoring (hub + agent)
+├── beszel-vm.yml           # Beszel VM host monitoring
+├── beszel-containers.yml  # DISABLED - requires socket (not secure)
 ├── inventory/
 │   ├── staging.ini
 │   └── production.ini
@@ -110,8 +111,8 @@ This project uses **Beszel** for VM host monitoring with a security-first approa
 
 ### What's NOT Monitored
 
-- Podman containers - requires socket (security tradeoff)
-- Container monitoring in separate playbook
+- Podman containers - Beszel doesn't support DB, requires socket (security risk)
+- Request feature: https://github.com/henrygd/beszel/issues
 
 - Podman containers - requires socket access (security trade-off)
 - Container monitoring in separate playbook

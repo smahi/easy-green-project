@@ -1,0 +1,41 @@
+---
+# ansible/beszel-containers.yml
+#
+# NOTE: Beszel does NOT support Podman DB monitoring.
+# It only supports socket-based container monitoring via the API.
+#
+# Security tradeoff: Requires read-only socket access
+# Alternative: Skip container monitoring (use VM playbook only)
+#
+# Usage:
+#   ansible-playbook ansible/beszel-containers.yml -i ansible/inventory/staging.ini
+#     -e beszel_key="..." -e beszel_token="..."
+#
+# Or skip this and only use beszel-vm.yml for host metrics
+
+- name: Install Beszel container monitoring (DISABLED)
+  hosts: staging
+  become: true
+  gather_facts: false
+
+  vars:
+    deploy_user: ubuntu
+
+  tasks:
+    - name: Display notice - Beszel does not support Podman DB
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+          CONTAINER MONITORING NOT AVAILABLE
+          ================================================
+
+          Beszel does NOT support Podman DB for container monitoring.
+          It requires Podman socket API access which is a security risk.
+
+          Options:
+          1. Use beszel-vm.yml only (host metrics) - recommended
+          2. Request DB support from Beszel: github.com/henrygd/beszel/issues
+
+          Current security approach:
+          - VM playbook: Binary agent, NO socket ✅
+          - Container playbook: Requires socket (not implemented)
