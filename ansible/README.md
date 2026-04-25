@@ -101,21 +101,18 @@ This project uses **Beszel** for VM host monitoring with a security-first approa
 | Layer | Approach | Why |
 |-------|----------|-----|
 | Hub | Podman container | Easy to manage, rebuildable |
-| Agent | Binary (not container) | No container escape risk |
+| VM Agent | Binary (not container) | No container escape risk |
+| Container Agent | Container + :ro socket | Read-only, minimal risk |
 | User | deploy_user (not root) | No privilege escalation |
-| Socket | None | VM metrics via system APIs only |
 
 ### What's Monitored
 
-- Host CPU, RAM, disk usage, network I/O
-- System uptime, load average
+- **VM host**: CPU, RAM, disk, network, uptime
+- **Podman containers**: Container status, CPU, RAM (via read-only socket)
 
 ### What's NOT Monitored
 
-- Podman containers - requires read-only socket (limited risk with :ro flag)
-
-- Podman containers - requires socket access (security trade-off)
-- Container monitoring in separate playbook
+- Container logs (use Dozzle or similar separately)
 
 See: https://beszel.dev/guide/getting-started
 
