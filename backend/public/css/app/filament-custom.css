@@ -1,0 +1,10 @@
+img.fi-logo,
+.fi-simple-header img,
+img[alt*="logo"],
+a[href*="/admin"] img,
+header img {
+    width: 130px !important;
+    height: 130px !important;
+    max-width: 130px !important;
+    min-width: 130px !important;
+}
