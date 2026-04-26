@@ -1,0 +1,233 @@
+---
+# ansible/beszel-vm.yml
+#
+# Install Beszel monitoring for VM host metrics.
+# Monitors: CPU, RAM, disk, network
+#
+# Security: Binary agent (not container) - minimal attack surface
+#
+# Usage:
+#   ansible-playbook ansible/beszel-vm.yml -i ansible/inventory/staging.ini
+#     -e beszel_key="<key>" -e beszel_token="<token>"
+#
+# Get key/token from Beszel UI: Settings → Tokens
+#   1. Create a token
+#   2. Copy the token and use it with -e beszel_token=
+#   3. The public key is shown when adding a system
+
+- name: Install Beszel monitoring (VM host metrics)
+  hosts: staging
+  become: true
+
+  vars:
+    deploy_user: ubuntu
+    beszel_hub_port: 8090
+    beszel_data_dir: "/opt/beszel"
+    beszel_app_url: "http://localhost:8090"
+
+  tasks:
+    - name: Create Beszel directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+      loop:
+        - "{{ beszel_data_dir }}/data"
+        - "{{ beszel_data_dir }}/agent_data"
+
+    - name: Check if Beszel hub exists
+      ansible.builtin.command:
+        cmd: "podman ps -a --filter name=beszel-hub --format {{ '{{.Names}}' }}"
+      become: true
+      become_user: "{{ deploy_user }}"
+      register: beszel_hub_exists
+      changed_when: false
+      failed_when: false
+
+    - name: Start Beszel hub
+      when: beszel_hub_exists.stdout == ""
+      become: true
+      become_user: "{{ deploy_user }}"
+      block:
+        - name: Run Beszel hub container
+          ansible.builtin.command:
+            cmd: >
+              podman run -d
+              --name beszel-hub
+              --restart unless-stopped
+              -p {{ beszel_hub_port }}:8090
+              -e APP_URL={{ beszel_app_url }}
+              -v {{ beszel_data_dir }}/data:/beszel_data
+              henrygd/beszel:latest
+
+        - name: Wait for hub
+          ansible.builtin.wait_for:
+            port: "{{ beszel_hub_port }}"
+            host: 127.0.0.1
+            timeout: 60
+
+    - name: Install curl
+      ansible.builtin.apt:
+        name: curl
+        state: present
+        update_cache: true
+
+    - name: Get user home
+      ansible.builtin.shell: |
+        getent passwd {{ deploy_user }} | awk -F: '{print $6}'
+      register: user_home_result
+      changed_when: false
+
+    - name: Get user UID
+      ansible.builtin.command:
+        cmd: "id -u {{ deploy_user }}"
+      register: user_uid
+      changed_when: false
+
+    - name: Detect architecture
+      ansible.builtin.command:
+        cmd: "uname -m"
+      register: arch_result
+      changed_when: false
+
+    - name: Download Beszel binary agent
+      become: true
+      become_user: "{{ deploy_user }}"
+      vars:
+        agent_arch: "{{ 'amd64' if arch_result.stdout == 'x86_64' else ('arm64' if arch_result.stdout == 'aarch64' else 'amd64') }}"
+      block:
+        - name: Download agent
+          ansible.builtin.get_url:
+            url: "https://github.com/henrygd/beszel/releases/latest/download/beszel-agent_Linux_{{ agent_arch }}.tar.gz"
+            dest: "/tmp/beszel-agent.tar.gz"
+          register: download
+          failed_when: false
+
+        - name: Download fallback
+          ansible.builtin.get_url:
+            url: "https://github.com/henrygd/beszel/releases/latest/download/beszel-agent_Linux_amd64.tar.gz"
+            dest: "/tmp/beszel-agent.tar.gz"
+          when: download.failed
+
+        - name: Extract agent
+          ansible.builtin.unarchive:
+            src: "/tmp/beszel-agent.tar.gz"
+            dest: "{{ beszel_data_dir }}/agent_data"
+            remote_src: true
+            creates: "{{ beszel_data_dir }}/agent_data/beszel-agent"
+
+    - name: Ensure curl installed for agent script
+      when: beszel_hub_exists.stdout == ""
+      become: true
+      become_user: "{{ deploy_user }}"
+      block:
+        - name: Install Beszel agent via script
+          ansible.builtin.shell:
+            cmd: |
+              curl -sL https://get.beszel.dev -o /tmp/install-agent.sh
+              chmod +x /tmp/install-agent.sh
+              /tmp/install-agent.sh -k "{{ beszel_key }}" -t "{{ beszel_token }}" -url "http://localhost:8090" -p 45876 --auto-update false
+            chdir: "{{ beszel_data_dir }}/agent_data"
+          args:
+            creates: "{{ user_home_result.stdout }}/.config/systemd/user/beszel-agent.service"
+          environment:
+            HOME: "{{ user_home_result.stdout }}"
+          register: install_script
+          failed_when: false
+
+    - name: Remove old agent container
+      become: true
+      become_user: "{{ deploy_user }}"
+      block:
+        - name: Stop old container
+          ansible.builtin.command:
+            cmd: "podman stop beszel-agent || true"
+          failed_when: false
+          changed_when: false
+
+        - name: Remove old container
+          ansible.builtin.command:
+            cmd: "podman rm beszel-agent || true"
+          failed_when: false
+          changed_when: false
+
+    - name: Enable linger for deploy user
+      ansible.builtin.command:
+        cmd: "loginctl enable-linger {{ deploy_user }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Create systemd service for binary agent
+      become: true
+      become_user: "{{ deploy_user }}"
+      vars:
+        user_home: "{{ user_home_result.stdout }}"
+      block:
+        - name: Create service dir
+          ansible.builtin.file:
+            path: "{{ user_home }}/.config/systemd/user"
+            state: directory
+            owner: "{{ deploy_user }}"
+            group: "{{ deploy_user }}"
+            mode: "0755"
+
+        - name: Create service file
+          ansible.builtin.copy:
+            dest: "{{ user_home }}/.config/systemd/user/beszel-agent.service"
+            owner: "{{ deploy_user }}"
+            group: "{{ deploy_user }}"
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Beszel Agent
+              After=network-online.target
+              Wants=network-online.target
+
+              [Service]
+              ExecStart={{ beszel_data_dir }}/agent_data/beszel-agent -k "{{ beszel_key }}" -t "{{ beszel_token }}" -url http://localhost:8090 -l :45876
+              Restart=on-failure
+              RestartSec=5
+              WorkingDirectory={{ beszel_data_dir }}/agent_data
+
+              [Install]
+              WantedBy=default.target
+
+        - name: Reload systemd
+          ansible.builtin.command:
+            cmd: "systemctl --user daemon-reload"
+          become: true
+          become_user: "{{ deploy_user }}"
+
+    - name: Start binary agent service
+      become: true
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.command:
+        cmd: "systemctl --user enable --now beszel-agent || true"
+      failed_when: false
+
+    - name: Allow Beszel hub port in firewall
+      community.general.ufw:
+        rule: allow
+        port: "{{ beszel_hub_port }}"
+        comment: Beszel hub
+
+    - name: Display info
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+          Beszel installed (binary agent)
+          ================================================
+
+          Hub: http://{{ ansible_host }}:{{ beszel_hub_port }}
+
+          Setup in browser:
+          1. Open http://{{ ansible_host }}:{{ beszel_hub_port }}
+          2. Create admin user (if not done)
+          3. Go to Settings → Tokens
+          4. Create a token
+          5. Rerun with: ansible-playbook ansible/beszel-vm.yml -i ansible/inventory/staging.ini -e beszel_key="<key>" -e beszel_token="<token>"
+
+          Security: Binary agent (not container)
+          Runs as: {{ deploy_user }} (uid: {{ user_uid.stdout }})
