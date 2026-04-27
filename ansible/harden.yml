@@ -37,7 +37,8 @@
   vars:
     # ── SSH ───────────────────────────────────────────────────────────────────
     ssh_port: 22                  # change to e.g. 2222 to move SSH off default port
-    ssh_allowed_users: []          # defaults to ansible_user only; add more like ['rihab'] if needed
+    ssh_allowed_users:
+      - root
     ssh_pubkey_only: true        # set false only if you still need password login
 
     # ── Firewall ──────────────────────────────────────────────────────────────
