@@ -38,8 +38,8 @@
     # ── SSH ───────────────────────────────────────────────────────────────────
     ssh_port: 22                  # change to e.g. 2222 to move SSH off default port
     ssh_allowed_users:
-      - ubuntu                   # add any other users that must SSH in
-      - rihab
+      - "{{ ansible_user }}"     # the user Ansible connects with (required)
+      - rihab                    # add any other users that must SSH in
     ssh_pubkey_only: true        # set false only if you still need password login
 
     # ── Firewall ──────────────────────────────────────────────────────────────
