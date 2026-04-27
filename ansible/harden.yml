@@ -39,6 +39,7 @@
     ssh_port: 22                  # change to e.g. 2222 to move SSH off default port
     ssh_allowed_users:
       - ubuntu                   # add any other users that must SSH in
+      - rihab
     ssh_pubkey_only: true        # set false only if you still need password login
 
     # ── Firewall ──────────────────────────────────────────────────────────────
@@ -73,7 +74,18 @@
   tasks:
 
     # ── 1. Full system update ─────────────────────────────────────────────────
+    - name: Fix broken packages before upgrade
+      ansible.builtin.shell: |
+        rm -f /etc/timezone /etc/localtime
+        ln -sf /usr/share/zoneinfo/Africa/Algiers /etc/localtime
+        echo "Africa/Algiers" | tee /etc/timezone
+        dpkg-reconfigure -f noninteractive tzdata
+        dpkg --configure -a
+        apt -f install -y
+
     - name: Update apt cache and upgrade all packages
+      environment:
+        DEBIAN_FRONTEND: noninteractive
       ansible.builtin.apt:
         update_cache: true
         upgrade: full
@@ -136,6 +148,24 @@
         purge: true
 
     # ── 3. SSH hardening ──────────────────────────────────────────────────────
+    - name: Ensure .ssh directory and authorized_keys have correct permissions
+      ansible.builtin.file:
+        path: "/home/{{ item }}/.ssh"
+        state: directory
+        owner: "{{ item }}"
+        group: "{{ item }}"
+        mode: "0700"
+      loop: "{{ ssh_allowed_users }}"
+
+    - name: Ensure authorized_keys has correct permissions
+      ansible.builtin.file:
+        path: "/home/{{ item }}/.ssh/authorized_keys"
+        owner: "{{ item }}"
+        group: "{{ item }}"
+        mode: "0600"
+      loop: "{{ ssh_allowed_users }}"
+      ignore_errors: true
+
     - name: Configure sshd
       ansible.builtin.blockinfile:
         path: /etc/ssh/sshd_config
@@ -147,7 +177,6 @@
           PermitRootLogin no
           PasswordAuthentication {{ 'no' if ssh_pubkey_only else 'yes' }}
           PubkeyAuthentication yes
-          AuthenticationMethods publickey
           PermitEmptyPasswords no
           ChallengeResponseAuthentication no
           KerberosAuthentication no
