@@ -247,6 +247,7 @@
 
     # ── 6. Kernel / sysctl hardening ──────────────────────────────────────────
     - name: Apply sysctl hardening
+      ignore_errors: yes
       ansible.posix.sysctl:
         name: "{{ item.name }}"
         value: "{{ item.value }}"
@@ -430,6 +431,7 @@
           # -e 2
 
     - name: Enable and restart auditd
+      ignore_errors: yes
       ansible.builtin.service:
         name: auditd
         enabled: true
