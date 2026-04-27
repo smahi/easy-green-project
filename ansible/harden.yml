@@ -37,9 +37,7 @@
   vars:
     # ── SSH ───────────────────────────────────────────────────────────────────
     ssh_port: 22                  # change to e.g. 2222 to move SSH off default port
-    ssh_allowed_users:
-      - "{{ ansible_user }}"     # the user Ansible connects with (required)
-      - rihab                    # add any other users that must SSH in
+    ssh_allowed_users: []          # defaults to ansible_user only; add more like ['rihab'] if needed
     ssh_pubkey_only: true        # set false only if you still need password login
 
     # ── Firewall ──────────────────────────────────────────────────────────────
@@ -184,7 +182,7 @@
           UsePAM yes
 
           # Restrict who can log in
-          AllowUsers {{ ssh_allowed_users | join(' ') }}
+          AllowUsers {{ [ansible_user] + ssh_allowed_users | unique | join(' ') }}
 
           # Harden ciphers / MACs / KEX
           Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
