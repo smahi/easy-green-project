@@ -31,7 +31,7 @@
 #   - Review the SSH vars below before running on a remote host.
 
 - name: Harden VPS security
-  hosts: staging
+  hosts: all
   become: true
 
   vars:
@@ -79,6 +79,32 @@
         upgrade: full
         autoremove: true
         autoclean: true
+
+    - name: Set timezone to Africa/Algiers
+      community.general.timezone:
+        name: Africa/Algiers
+
+    - name: Install and configure NTP
+      ansible.builtin.apt:
+        name: chrony
+        state: present
+
+    - name: Configure chrony NTP client
+      ansible.builtin.copy:
+        dest: /etc/chrony/chrony.conf
+        mode: "0644"
+        content: |
+          pool time.google.com iburst
+          pool ntp.ubuntu.com iburst
+          driftfile /var/lib/chrony/drift
+          makestep 1.0 3
+          rtcsync
+
+    - name: Enable and start chrony
+      ansible.builtin.service:
+        name: chrony
+        enabled: true
+        state: started
 
     # ── 2. Install hardening tools, remove unnecessary packages ───────────────
     - name: Install security packages
