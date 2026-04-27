@@ -38,6 +38,7 @@
     # ── SSH ───────────────────────────────────────────────────────────────────
     ssh_port: 22                  # change to e.g. 2222 to move SSH off default port
     ssh_allowed_users:
+      - "{{ ansible_user }}"
       - root
     ssh_pubkey_only: true        # set false only if you still need password login
 
@@ -147,9 +148,9 @@
         purge: true
 
     # ── 3. SSH hardening ──────────────────────────────────────────────────────
-    - name: Ensure .ssh directory and authorized_keys have correct permissions
+    - name: Ensure .ssh directory has correct permissions
       ansible.builtin.file:
-        path: "/home/{{ item }}/.ssh"
+        path: "{{ '/root/.ssh' if item == 'root' else '/home/' + item + '/.ssh' }}"
         state: directory
         owner: "{{ item }}"
         group: "{{ item }}"
@@ -158,7 +159,7 @@
 
     - name: Ensure authorized_keys has correct permissions
       ansible.builtin.file:
-        path: "/home/{{ item }}/.ssh/authorized_keys"
+        path: "{{ '/root/.ssh/authorized_keys' if item == 'root' else '/home/' + item + '/.ssh/authorized_keys' }}"
         owner: "{{ item }}"
         group: "{{ item }}"
         mode: "0600"
@@ -183,7 +184,7 @@
           UsePAM yes
 
           # Restrict who can log in
-          AllowUsers {{ [ansible_user] + ssh_allowed_users | unique | join(' ') }}
+          AllowUsers {{ ssh_allowed_users | join(' ') }}
 
           # Harden ciphers / MACs / KEX
           Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
