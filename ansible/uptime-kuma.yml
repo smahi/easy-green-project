@@ -13,11 +13,11 @@
 #   3. Add monitors for Laravel app
 
 - name: Install Uptime Kuma monitoring
-  hosts: staging
+  hosts: all
   become: true
 
   vars:
-    deploy_user: ubuntu
+    deploy_user: "{{ ansible_user }}"
     uptime_kuma_port: 3001
     uptime_kuma_data_dir: "/opt/uptime-kuma"
 
@@ -34,9 +34,7 @@
 
     - name: Check if Uptime Kuma exists
       ansible.builtin.command:
-        cmd: "podman ps -a --filter name=uptime-kuma --format {{ '{{.Names}}' }}"
-      become: true
-      become_user: "{{ deploy_user }}"
+        cmd: "docker ps -a --filter name=uptime-kuma --format {{ '{{.Names}}' }}"
       register: kuma_exists
       changed_when: false
       failed_when: false
@@ -46,23 +44,19 @@
       become: true
       become_user: "{{ deploy_user }}"
       block:
-        - name: Get Podman socket path
-          ansible.builtin.command:
-            cmd: "podman info --format '{{.Host.RemoteSocket.Path}}'"
-          register: podman_socket_path
-          changed_when: false
-
         - name: Run Uptime Kuma container
           ansible.builtin.command:
             cmd: >
-              podman run -d
+              docker run -d
               --name uptime-kuma
               --restart unless-stopped
-              -p {{ uptime_kuma_port }}:3001
+              --read-only
+              --cap-drop ALL
+              --security-opt no-new-privileges:true
+              -p 127.0.0.1:{{ uptime_kuma_port }}:3001
               -v {{ uptime_kuma_data_dir }}:/app/data
-              -v {{ podman_socket_path.stdout }}:/var/run/docker.sock:Z
-              --cap-add NET_RAW
-              louislam/uptime-kuma:2
+              -v /var/run/docker.sock:/var/run/docker.sock:ro
+              louislam/uptime-kuma:1.23.13
 
     - name: Wait for Uptime Kuma
       when: kuma_exists.stdout == ""
@@ -90,13 +84,13 @@
           1. Open http://{{ ansible_host }}:{{ uptime_kuma_port }}
           2. Create admin account
           3. Configure Docker Host (Settings → Docker Hosts):
-             - Friendly Name: Podman Host
+             - Friendly Name: Docker Host
              - Connection Type: Socket
              - Docker Path: /var/run/docker.sock
           4. Add monitors
 
           Monitor types:
           - HTTP(s): App URL
-          - Docker Container: Via Podman socket
+          - Docker Container: Via Docker socket
           - Keyword: Check for specific text
           - SSL Certificate: Track expiry

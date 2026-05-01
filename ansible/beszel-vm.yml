@@ -16,11 +16,11 @@
 #   3. The public key is shown when adding a system
 
 - name: Install Beszel monitoring (VM host metrics)
-  hosts: staging
+  hosts: all
   become: true
 
   vars:
-    deploy_user: ubuntu
+    deploy_user: "{{ ansible_user }}"
     beszel_hub_port: 8090
     beszel_data_dir: "/opt/beszel"
     beszel_app_url: "http://localhost:8090"
@@ -39,7 +39,7 @@
 
     - name: Check if Beszel hub exists
       ansible.builtin.command:
-        cmd: "podman ps -a --filter name=beszel-hub --format {{ '{{.Names}}' }}"
+        cmd: "docker ps -a --filter name=beszel-hub --format {{ '{{.Names}}' }}"
       become: true
       become_user: "{{ deploy_user }}"
       register: beszel_hub_exists
@@ -54,13 +54,16 @@
         - name: Run Beszel hub container
           ansible.builtin.command:
             cmd: >
-              podman run -d
+              docker run -d
               --name beszel-hub
               --restart unless-stopped
-              -p {{ beszel_hub_port }}:8090
+              --read-only
+              --cap-drop ALL
+              --security-opt no-new-privileges:true
+              -p 127.0.0.1:{{ beszel_hub_port }}:8090
               -e APP_URL={{ beszel_app_url }}
               -v {{ beszel_data_dir }}/data:/beszel_data
-              henrygd/beszel:latest
+              henrygd/beszel:1.7.2
 
         - name: Wait for hub
           ansible.builtin.wait_for:
@@ -143,13 +146,13 @@
       block:
         - name: Stop old container
           ansible.builtin.command:
-            cmd: "podman stop beszel-agent || true"
+            cmd: "docker stop beszel-agent || true"
           failed_when: false
           changed_when: false
 
         - name: Remove old container
           ansible.builtin.command:
-            cmd: "podman rm beszel-agent || true"
+            cmd: "docker rm beszel-agent || true"
           failed_when: false
           changed_when: false
 

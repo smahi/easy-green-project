@@ -11,7 +11,7 @@ echo "Deploying..."
 
 cd "$PROJECT_ROOT/ansible"
 
-ansible-playbook deploy.yml \
+ansible-playbook deploy-docker.yml \
   -i inventory/staging.ini \
   --ask-become-pass \
   --ask-vault-pass \

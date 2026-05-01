@@ -16,7 +16,7 @@
 #   - Project directory exists at {{ deploy_dir }}
 
 - name: Deploy Laravel backend with a rootless Podman pod
-  hosts: staging
+  hosts: all
   become: false
 
   vars:

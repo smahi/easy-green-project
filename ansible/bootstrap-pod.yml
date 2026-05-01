@@ -12,11 +12,11 @@
 #   harden.yml -> reboot -> bootstrap-pod.yml -> deploy-pod.yml
 
 - name: Bootstrap VM for rootless Podman pod deployment
-  hosts: staging
+  hosts: all
   become: true
 
   vars:
-    deploy_user: ubuntu
+    deploy_user: "{{ ansible_user }}"
     project_root: "/home/{{ deploy_user }}/easy-green-project"
     deploy_dir: "{{ project_root }}/backend"
     containers_conf_dir: "/home/{{ deploy_user }}/.config/containers"

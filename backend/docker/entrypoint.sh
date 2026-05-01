@@ -33,19 +33,14 @@ run_web_bootstrap() {
     wait_for_postgres
     wait_for_valkey
 
-    echo "==> Running migrations..."
-    php artisan migrate --force
-
-    echo "==> Optimising..."
-    php artisan filament:cache-components
-    php artisan icons:cache
-    php artisan optimize
+    echo "==> Fixing permissions FIRST..."
+    chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache || true
 
     echo "==> Linking storage..."
     php artisan storage:link --quiet || true
 
-    echo "==> Fixing permissions..."
-    chown -R www-data:www-data storage bootstrap/cache
+    echo "==> Running migrations..."
+    php artisan migrate --force || true
 }
 
 run_worker_bootstrap() {

@@ -1,26 +1,27 @@
 # EASY GREEN - Ansible Operations
 
 Single-source guide for provisioning, deploying, backing up, and restoring the
-Easy Green backend with a rootless Podman pod.
+Easy Green backend with Docker Compose.
 
 ## Playbooks
 
 ```text
 ansible/
-├── harden.yml            # One-time host hardening
-├── bootstrap-pod.yml     # One-time Podman/rootless bootstrap
-├── deploy-pod.yml        # Main app deploy playbook
-├── backup-download.yml   # Download a sanitized backend backup
-├── restore-backup.yml    # Restore a selected backend backup
-├── rollback.yml          # Legacy release/symlink rollback helper
-├── beszel-vm.yml           # Beszel VM host monitoring
-├── beszel-containers.yml  # Beszel Podman container monitoring
+├── harden.yml              # One-time host hardening
+├── bootstrap-docker.yml   # One-time Docker bootstrap
+├── deploy-docker.yml    # Main app deploy playbook
+├── backup-download.yml # Download a sanitized backend backup
+├── restore-backup.yml  # Restore a selected backend backup
+├── rollback.yml       # Legacy release/symlink rollback helper
+├── beszel-vm.yml          # Beszel VM host monitoring
+├── beszel-containers.yml   # Beszel Docker container monitoring
+├── uptime-kuma.yml       # Uptime Kuma service monitoring
 ├── inventory/
 │   ├── staging.ini
 │   └── production.ini
 ├── group_vars/
-├── tasks/
-│   └── pod_stack.yml     # Shared pod recreation logic
+├── templates/
+│   └── docker-compose.yml.j2  # Docker Compose template
 ├── vault.yml
 └── README.md
 ```
@@ -55,7 +56,7 @@ cd backend && php artisan key:generate --show
 Fresh server flow:
 
 ```text
-harden.yml -> reboot -> bootstrap-pod.yml -> deploy-pod.yml
+harden.yml -> reboot -> bootstrap-docker.yml -> deploy-docker.yml
 ```
 
 Staging:
@@ -63,8 +64,8 @@ Staging:
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/harden.yml
 ansible staging -i ansible/inventory/staging.ini -m reboot
-ansible-playbook -i ansible/inventory/staging.ini ansible/bootstrap-pod.yml
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml
+ansible-playbook -i ansible/inventory/staging.ini ansible/bootstrap-docker.yml
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-docker.yml
 ```
 
 Production:
@@ -72,49 +73,61 @@ Production:
 ```bash
 ansible-playbook -i ansible/inventory/production.ini ansible/harden.yml
 ansible production -i ansible/inventory/production.ini -m reboot
-ansible-playbook -i ansible/inventory/production.ini ansible/bootstrap-pod.yml
-ansible-playbook -i ansible/inventory/production.ini ansible/deploy-pod.yml
+ansible-playbook -i ansible/inventory/production.ini ansible/bootstrap-docker.yml
+ansible-playbook -i ansible/inventory/production.ini ansible/deploy-docker.yml
+```
+
+## Deployment Tags
+
+```bash
+# Build image locally, sync to VPS, load, and deploy
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-docker.yml
+
+# Sync only (skip build)
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-docker.yml --tags deploy
+
+# Build locally only
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-docker.yml --tags build
 ```
 
 ## Monitoring
 
-Beszel for monitoring:
+### Uptime Kuma (Service Monitoring)
 
 ```bash
-# VM host metrics (binary agent - no socket)
+ansible-playbook -i ansible/inventory/staging.ini ansible/uptime-kuma.yml
+```
+
+Then open http://<VM-IP>:3001 and configure monitors.
+
+### Beszel (Host + Container Monitoring)
+
+```bash
+# VM host metrics (binary agent)
 ansible-playbook -i ansible/inventory/staging.ini ansible/beszel-vm.yml \
   -e beszel_key="..." -e beszel_token="..."
 
-# Container metrics (read-only socket)
+# Docker container metrics (read-only socket)
 ansible-playbook -i ansible/inventory/staging.ini ansible/beszel-containers.yml \
   -e beszel_key="..." -e beszel_token="..."
 ```
 
 See [Beszel Guide](#beszel-vmyml) below for setup.
 
-## Monitoring Recommendations
+## Security Features
 
-This project uses **Beszel** for VM host monitoring with a security-first approach.
+All containers follow security best practices:
 
-### Security Principles
-
-| Layer | Approach | Why |
-|-------|----------|-----|
-| Hub | Podman container | Easy to manage, rebuildable |
-| VM Agent | Binary (not container) | No container escape risk |
-| Container Agent | Container + :ro socket | Read-only, minimal risk |
-| User | deploy_user (not root) | No privilege escalation |
-
-### What's Monitored
-
-- **VM host**: CPU, RAM, disk, network, uptime
-- **Podman containers**: Container status, CPU, RAM (via read-only socket)
-
-### What's NOT Monitored
-
-- Container logs (use Dozzle or similar separately)
-
-See: https://beszel.dev/guide/getting-started
+| Feature | Implementation |
+|---------|-------------|
+| Non-root user | `user: "1000:1000"` |
+| Read-only filesystem | `read_only: true` |
+| Drop capabilities | `cap_drop: ALL` |
+| No privilege escalation | `no-new-privileges: true` |
+| Temporary filesystem | `tmpfs: /tmp` |
+| Resource limits | CPU + memory limits |
+| Health checks | service_healthy conditions |
+| Internal network | `backend` network |
 
 ## What Each Playbook Does
 
@@ -129,35 +142,35 @@ Run once on a new host.
 - hardens `/tmp` and `/dev/shm`
 - enables unattended upgrades, auditd, and other baseline protections
 
-### `bootstrap-pod.yml`
+### `bootstrap-docker.yml`
 
 Run once after hardening.
 
-- installs Podman, `passt`/`pasta`, `slirp4netns`, `uidmap`, and `rsync`
-- enables rootless low-port binding
-- sets rootless Podman to prefer `pasta`
-- configures registry search order and container DNS
-- enables the user Podman socket and linger
+- installs Docker Engine 28.x
+- adds deploy user to docker group
+- configures Docker daemon with security settings (`/etc/docker/daemon.json`)
+- enables unprivileged port binding (port 80)
+- creates project directories and data folders
+- enables and starts Docker service
 
-### `deploy-pod.yml`
+### `deploy-docker.yml`
 
 Run on every deploy.
 
 - syncs `backend/` to the host
+- copies `docker-compose.yml` template
 - preserves the existing remote `.env`
-- forces Laravel DB/Redis hosts to `127.0.0.1` inside the pod
-- builds the app image
-- recreates the rootless Podman pod with `pasta`
-- recreates DB, Valkey, app, queue, scheduler, and Caddy containers
-- enables the user systemd unit for pod restart on boot
+- builds app image locally
+- transfers image tarball to VPS
+- loads image and starts containers with Docker Compose
 - smoke-tests the deployed app
 
 Useful tags:
 
 ```bash
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml --tags build
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml --tags deploy
-ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-pod.yml --tags smoke
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-docker.yml --tags build
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-docker.yml --tags deploy
+ansible-playbook -i ansible/inventory/staging.ini ansible/deploy-docker.yml --tags smoke
 ```
 
 ### `backup-download.yml`
@@ -170,26 +183,26 @@ ansible-playbook -i ansible/inventory/staging.ini ansible/backup-download.yml
 
 ### `restore-backup.yml`
 
-Restores a downloaded backend archive and then rebuilds the same Podman pod stack:
+Restores a downloaded backend archive and rebuilds the Docker Compose stack:
 
 ```bash
 ansible-playbook -i ansible/inventory/staging.ini ansible/restore-backup.yml \
-  -e restore_backup_file=ansible/backups/u24/easy-green-backend-u24-20260424T051901.tar.gz
+  -e restore_backup_file=ansible/backups/.../easy-green-backend-...tar.gz
 ```
 
 ## Runtime Layout
 
-The deployed stack runs as one rootless Podman pod with `pasta` networking:
+The deployed stack runs as Docker Compose services:
 
-- `easygreen-db`
-- `easygreen-valkey`
-- `easygreen-app`
-- `easygreen-queue`
-- `easygreen-scheduler`
-- `easygreen-caddy`
+- `easygreen-db` - PostgreSQL 18
+- `easygreen-valkey` - Valkey 8
+- `easygreen-app` - Laravel app (FrankenPHP)
+- `easygreen-queue` - Queue worker
+- `easygreen-scheduler` - Scheduler
+- `easygreen-caddy` - Caddy webserver
 
-Containers communicate over `127.0.0.1` inside the shared pod network
-namespace. Only Caddy publishes host ports.
+Services communicate over internal `backend` network.
+Only Caddy publishes host ports 80/443.
 
 ## Common Operations
 
@@ -203,7 +216,7 @@ Remote artisan command:
 
 ```bash
 ansible staging -i ansible/inventory/staging.ini -m command \
-  -a "podman exec easygreen-app php artisan migrate:status" \
+  -a "docker exec easygreen-app-1 php artisan migrate:status" \
   --become=false
 ```
 
@@ -211,15 +224,15 @@ Tail app logs:
 
 ```bash
 ansible staging -i ansible/inventory/staging.ini -m command \
-  -a "podman logs --tail=50 easygreen-app" \
+  -a "docker logs --tail=50 easygreen-app-1" \
   --become=false
 ```
 
-Pod status:
+Container status:
 
 ```bash
 ansible staging -i ansible/inventory/staging.ini -m command \
-  -a "podman pod ps && podman ps --filter pod=easygreen-pod" \
+  -a "docker ps" \
   --become=false
 ```
 
@@ -238,8 +251,33 @@ ansible staging -i ansible/inventory/staging.ini -m apt \
   -a "name=rsync state=present" --become
 ```
 
-Pod startup failure:
+Docker not running:
 
 ```bash
-incus exec u24 -- bash -lc 'podman pod ps; podman ps -a; podman logs easygreen-db || true; podman logs easygreen-app || true'
+ansible staging -i ansible/inventory/staging.ini -m systemd \
+  -a "name=docker state=started" --become
 ```
+
+## Beszel VM/Container Monitoring
+
+This project uses **Beszel** for monitoring with a security-first approach.
+
+### Security Principles
+
+| Layer | Approach | Why |
+|-------|----------|-----|
+| Hub | Docker container | Easy to manage, rebuildable |
+| VM Agent | Binary (not container) | No container escape risk |
+| Container Agent | Container + :ro socket | Read-only, minimal risk |
+| User | deploy_user (not root) | No privilege escalation |
+
+### What's Monitored
+
+- **VM host**: CPU, RAM, disk, network, uptime
+- **Docker containers**: Container status, CPU, RAM (via read-only socket)
+
+### What's NOT Monitored
+
+- Container logs (use Dozzle or similar separately)
+
+See: https://beszel.dev/guide/getting-started
