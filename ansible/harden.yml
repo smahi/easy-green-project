@@ -31,14 +31,15 @@
 #   - Review the SSH vars below before running on a remote host.
 
 - name: Harden VPS security
-  hosts: staging
+  hosts: all
   become: true
 
   vars:
     # ── SSH ───────────────────────────────────────────────────────────────────
     ssh_port: 22                  # change to e.g. 2222 to move SSH off default port
     ssh_allowed_users:
-      - ubuntu                   # add any other users that must SSH in
+      - root
+      - "{{ ansible_user }}"                   # add any other users that must SSH in
     ssh_pubkey_only: true        # set false only if you still need password login
 
     # ── Firewall ──────────────────────────────────────────────────────────────
@@ -118,7 +119,7 @@
           Port {{ ssh_port }}
 
           # Authentication
-          PermitRootLogin no
+          PermitRootLogin prohibit-password
           PasswordAuthentication {{ 'no' if ssh_pubkey_only else 'yes' }}
           PubkeyAuthentication yes
           AuthenticationMethods publickey
